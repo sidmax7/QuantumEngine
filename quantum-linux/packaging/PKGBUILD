@@ -11,7 +11,7 @@ makedepends=('cargo')
 # The app lives in the quantum-linux/ subdirectory of the QuantumEngine repo,
 # alongside research material that isn't part of this package.
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('c51bb91ad4afc22a659cd388d357e9061f0a79737c8f784e2999b07ec67c4d1d')
 
 _srcdir=QuantumEngine-$pkgver/quantum-linux
 
