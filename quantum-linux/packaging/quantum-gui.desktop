@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Quantum Linux
+GenericName=Headset Control
+Comment=Noise cancelling, sidetone and lighting for the JBL Quantum 810 Wireless
+Exec=quantum-gui
+Icon=audio-headset
+Terminal=false
+Categories=AudioVideo;Audio;Settings;HardwareSettings;
+Keywords=JBL;Quantum;headset;ANC;RGB;
+StartupWMClass=quantum-gui

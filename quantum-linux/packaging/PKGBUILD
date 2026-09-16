@@ -1,0 +1,42 @@
+# Maintainer: sidmax
+pkgname=quantum-linux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting (CLI and GUI)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/sidmax81/quantum-linux"
+license=('MIT OR Apache-2.0')
+depends=('gcc-libs' 'glibc' 'libglvnd' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi' 'libxrandr')
+makedepends=('cargo')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release --workspace
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --workspace
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/quantumctl -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/quantum-gui -t "$pkgdir/usr/bin/"
+  install -Dm644 packaging/quantum-gui.desktop -t "$pkgdir/usr/share/applications/"
+  # Packaged rules belong in /usr/lib; /etc/udev/rules.d is for the admin.
+  install -Dm644 udev/70-jbl-quantum.rules -t "$pkgdir/usr/lib/udev/rules.d/"
+  install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 LICENSE-MIT LICENSE-APACHE -t "$pkgdir/usr/share/licenses/$pkgname/"
+}

@@ -1,0 +1,23 @@
+# Only the app (quantum-linux/) is versioned.
+
+# Research notes, captures and tools stay local.
+/reverse engineer/
+
+# Logs
+*.log
+
+# Rust build output (quantum-linux/.gitignore covers it too, for when that
+# folder is published as its own repo)
+target/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

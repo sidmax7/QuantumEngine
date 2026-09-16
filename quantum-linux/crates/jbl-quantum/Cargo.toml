@@ -1,0 +1,11 @@
+[package]
+name = "jbl-quantum"
+description = "Control JBL Quantum 810 Wireless headsets over their vendor HID interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc = "0.2"

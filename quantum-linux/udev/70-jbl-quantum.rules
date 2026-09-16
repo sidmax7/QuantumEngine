@@ -1,0 +1,11 @@
+# JBL Quantum 810 Wireless (0ecb:2069)
+#
+# Lets the logged-in desktop user talk to the headset dongle's control
+# interface, without root and without making the device world-writable.
+#
+# Install:
+#   sudo install -Dm644 udev/70-jbl-quantum.rules /etc/udev/rules.d/70-jbl-quantum.rules
+#   sudo udevadm control --reload
+# then unplug the dongle and plug it back in.
+
+KERNEL=="hidraw*", ATTRS{idVendor}=="0ecb", ATTRS{idProduct}=="2069", TAG+="uaccess"
