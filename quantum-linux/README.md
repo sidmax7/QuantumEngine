@@ -1,4 +1,8 @@
-# quantum-linux
+<p align="center">
+  <img src="packaging/assets/logo-128.png" width="96" alt="QuantumEngine logo">
+</p>
+
+# QuantumEngine
 
 Control a **JBL Quantum 810 Wireless** headset on Linux: noise cancelling,
 TalkThru, sidetone and lighting. There's a desktop app and a command-line tool,
@@ -52,22 +56,22 @@ You need a Rust toolchain (1.88 or newer) and the usual GUI libraries (OpenGL,
 xkbcommon, and Wayland or X11).
 
 ```sh
-cargo install --path crates/quantumctl
-cargo install --path crates/quantum-gui
+cargo install --path crates/quantumenginectl
+cargo install --path crates/quantumengine
 
 sudo install -Dm644 udev/70-jbl-quantum.rules /etc/udev/rules.d/70-jbl-quantum.rules
 sudo udevadm control --reload
 ```
 
 Then replug the dongle. To get a menu entry, copy
-`packaging/quantum-gui.desktop` to `~/.local/share/applications/`.
+`packaging/quantumengine.desktop` to `~/.local/share/applications/`.
 
 The udev rule gives the logged-in user access to the dongle. Without it, both
 tools report a permission error.
 
 ## Desktop app
 
-Run `quantum-gui`, or use **Quantum Linux** in your app menu.
+Run `quantumengine`, or use **QuantumEngine** in your app menu.
 
 The window follows the headset live. Pressing the ANC button, moving the
 game/chat dial or muting the microphone updates it straight away. While a change
@@ -80,7 +84,7 @@ takes new colours at that moment.
 ## Command line
 
 ```console
-$ quantumctl
+$ quantumenginectl
 battery:   50%
 anc:       on
 sidetone:  off
@@ -91,21 +95,21 @@ paired to: PC-myhost #1
 serial:    XXXXXX-XXXXXXXXX
 firmware:  0.7.2, 0.8.2, 1.0.2, 0.7.2
 
-$ quantumctl anc talkthru
+$ quantumenginectl anc talkthru
 talkthru
 
-$ quantumctl rgb both chase '#ff0000' '#0000ff' --brightness 60
+$ quantumenginectl rgb both chase '#ff0000' '#0000ff' --brightness 60
 applied
 
-$ quantumctl --json battery
+$ quantumenginectl --json battery
 {"battery_percent":50}
 
-$ quantumctl watch
+$ quantumenginectl watch
 14:02:11  anc: off
 14:02:15  dial: 12 (game)
 ```
 
-Run `quantumctl --help` for the full list. Setting commands wait until the
+Run `quantumenginectl --help` for the full list. Setting commands wait until the
 headset confirms the change, then print the new state. They exit non-zero if
 the headset is off or doesn't respond.
 

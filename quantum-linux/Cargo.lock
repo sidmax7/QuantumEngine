@@ -1758,7 +1758,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
-name = "quantum-gui"
+name = "quantumengine"
 version = "0.1.0"
 dependencies = [
  "eframe",
@@ -1767,7 +1767,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "quantumctl"
+name = "quantumenginectl"
 version = "0.1.0"
 dependencies = [
  "jbl-quantum",

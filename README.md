@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="quantum-linux/packaging/assets/logo-128.png" width="96" alt="QuantumEngine logo">
+</p>
+
 # QuantumEngine for Linux
 
 Unofficial Linux control software for the **JBL Quantum 810 Wireless** headset.
@@ -6,8 +10,8 @@ JBL's QuantumENGINE app.
 
 It includes:
 
-- **Quantum Linux**, a small desktop app that follows the headset live.
-- **`quantumctl`**, a command-line tool with JSON output for scripts.
+- **QuantumEngine**, a small desktop app that follows the headset live.
+- **`quantumenginectl`**, a command-line tool with JSON output for scripts.
 - **`jbl-quantum`**, a Rust library for anyone building their own tools.
 
 Everything talks to the USB dongle directly. It needs no background service,
@@ -38,8 +42,8 @@ rather than guess. If you own one and want to help add it, open an issue.
 On Arch-based systems (Arch, CachyOS, EndeavourOS, Manjaro):
 
 ```sh
-git clone https://github.com/sidmax81/quantum-linux.git
-cd quantum-linux/quantum-linux/packaging
+git clone https://github.com/sidmax7/QuantumEngine.git
+cd QuantumEngine/quantum-linux/packaging
 makepkg -si
 ```
 
@@ -47,19 +51,19 @@ On other distributions, with a Rust toolchain installed:
 
 ```sh
 cd quantum-linux
-cargo install --path crates/quantum-gui
-cargo install --path crates/quantumctl
+cargo install --path crates/quantumengine
+cargo install --path crates/quantumenginectl
 sudo install -Dm644 udev/70-jbl-quantum.rules /etc/udev/rules.d/70-jbl-quantum.rules
 sudo udevadm control --reload
 ```
 
-Then unplug the dongle and plug it back in. Now start **Quantum Linux** from
+Then unplug the dongle and plug it back in. Now start **QuantumEngine** from
 your app menu, or run a command:
 
 ```sh
-quantumctl                 # show everything
-quantumctl anc talkthru    # switch to TalkThru
-quantumctl lights off
+quantumenginectl                 # show everything
+quantumenginectl anc talkthru    # switch to TalkThru
+quantumenginectl lights off
 ```
 
 Full install notes, command reference and troubleshooting are in
@@ -70,9 +74,9 @@ Full install notes, command reference and troubleshooting are in
 ```
 quantum-linux/
 ├── crates/
-│   ├── jbl-quantum/    library: device protocol and headset API
-│   ├── quantumctl/     command-line tool
-│   └── quantum-gui/    desktop app (egui)
+│   ├── jbl-quantum/       library: device protocol and headset API
+│   ├── quantumenginectl/  command-line tool
+│   └── quantumengine/     desktop app (egui)
 ├── udev/               device permission rule
 └── packaging/          PKGBUILD and desktop entry
 ```

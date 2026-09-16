@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=Quantum Linux
+Name=QuantumEngine
 GenericName=Headset Control
 Comment=Noise cancelling, sidetone and lighting for the JBL Quantum 810 Wireless
-Exec=quantum-gui
-Icon=audio-headset
+Exec=quantumengine
+Icon=quantumengine
 Terminal=false
-Categories=AudioVideo;Audio;Settings;HardwareSettings;
+Categories=Settings;HardwareSettings;
 Keywords=JBL;Quantum;headset;ANC;RGB;
-StartupWMClass=quantum-gui
+StartupWMClass=quantumengine

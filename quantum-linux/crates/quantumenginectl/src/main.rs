@@ -4,10 +4,10 @@ use jbl_quantum::{Anc, Colour, Effect, Headset, Sidetone, Status, Zone, ZoneLigh
 use std::process::ExitCode;
 
 const USAGE: &str = "\
-quantumctl — control a JBL Quantum 810 Wireless headset
+quantumenginectl — control a JBL Quantum 810 Wireless headset
 
 USAGE:
-    quantumctl [--json] <COMMAND>
+    quantumenginectl [--json] <COMMAND>
 
 COMMANDS:
     status                      everything at once (default)
@@ -52,7 +52,7 @@ fn main() -> ExitCode {
     match run(&rest, json) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("quantumctl: {e}");
+            eprintln!("quantumenginectl: {e}");
             ExitCode::FAILURE
         }
     }
@@ -196,7 +196,7 @@ fn cmd_rgb(headset: &Headset, params: &[String]) -> Result<(), jbl_quantum::Erro
 
     let [zone_name, effect_name, colours @ ..] = positional.as_slice() else {
         return Err(jbl_quantum::Error::Invalid(
-            "usage: quantumctl rgb <zone> <effect> <colour>... (try --help)".into(),
+            "usage: quantumenginectl rgb <zone> <effect> <colour>... (try --help)".into(),
         ));
     };
 
