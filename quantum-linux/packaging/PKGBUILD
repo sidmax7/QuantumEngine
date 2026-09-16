@@ -6,7 +6,9 @@ pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting (CLI
 arch=('x86_64' 'aarch64')
 url="https://github.com/sidmax7/QuantumEngine"
 license=('MIT OR Apache-2.0')
-depends=('gcc-libs' 'glibc' 'libglvnd' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi' 'libxrandr')
+# The GUI libraries are loaded with dlopen at startup rather than linked, so
+# namcap reports them as "may not be needed". They are needed.
+depends=('glibc' 'libgcc' 'hicolor-icon-theme' 'libglvnd' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi')
 makedepends=('cargo')
 # The app lives in the quantum-linux/ subdirectory of the QuantumEngine repo,
 # alongside research material that isn't part of this package.
