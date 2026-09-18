@@ -1,7 +1,16 @@
 //! Command-line control for JBL Quantum 810 Wireless headsets.
+//!
+//! Every command except `devices` (a plain hidraw enumeration, with no
+//! device access) goes through the `quantumengine --tray` service over
+//! D-Bus, starting it if it is not already running — this CLI never opens
+//! the headset itself. See `quantumengine-dbus` for the shared contract.
 
-use jbl_quantum::{Anc, Colour, Effect, Headset, Sidetone, Status, Zone, ZoneLighting, CONFIRM_TIMEOUT, MAX_SLOTS};
+mod dbus;
+
+use jbl_quantum::{Colour, Effect, Headset, Zone, MAX_SLOTS};
+use quantumengine_dbus::{HeadsetProxyBlocking, ZoneLightingArg};
 use std::process::ExitCode;
+use std::time::Duration;
 
 const USAGE: &str = "\
 quantumenginectl — control a JBL Quantum 810 Wireless headset
@@ -19,7 +28,7 @@ COMMANDS:
     lights [on|off]             show or set the lights
     rgb <zone> <effect> <colour>...
                                 configure lighting and switch it on
-    watch                       stream events until interrupted
+    watch                       stream state changes until interrupted
     devices                     list detected dongles
 
     rgb zones:    logo, ring, both
@@ -33,6 +42,9 @@ OPTIONS:
     --json      machine-readable output
     -h, --help  this help
 ";
+
+/// How often `watch` re-reads state looking for a change.
+const WATCH_POLL_EVERY: Duration = Duration::from_millis(150);
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -58,13 +70,13 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: &[String], json: bool) -> Result<(), jbl_quantum::Error> {
+fn run(args: &[String], json: bool) -> Result<(), String> {
     let (command, params) = args
         .split_first()
         .map_or(("status", &[] as &[String]), |(c, p)| (c.as_str(), p));
 
     if command == "devices" {
-        let nodes = Headset::discover()?;
+        let nodes = Headset::discover().map_err(|e| e.to_string())?;
         if json {
             let entries: Vec<String> = nodes
                 .iter()
@@ -87,48 +99,43 @@ fn run(args: &[String], json: bool) -> Result<(), jbl_quantum::Error> {
         return Ok(());
     }
 
-    let headset = Headset::open_first()?;
+    let proxy = dbus::connect()?;
 
     match command {
-        "status" => {
-            let s = headset.status()?;
-            if json {
-                println!("{}", status_json(&s));
-            } else {
-                print_status(&s);
-            }
-        }
+        "status" => cmd_status(&proxy, json)?,
         "battery" => {
-            let pct = headset.battery()?;
+            require_ready(&proxy)?;
+            let pct = proxy.battery().map_err(|e| e.to_string())?;
             if json {
                 println!("{{\"battery_percent\":{pct}}}");
             } else {
                 println!("{pct}%");
             }
         }
-        "anc" => match params.first().map(String::as_str) {
+        "anc" => match params.first() {
             None => {
-                let mode = headset.anc()?;
-                emit(json, "anc", mode.as_str());
+                let mode = proxy.anc().map_err(|e| e.to_string())?;
+                emit(json, "anc", &mode);
             }
             Some(value) => {
-                let mode = headset.set_anc_confirmed(parse_anc(value)?, CONFIRM_TIMEOUT)?;
-                emit(json, "anc", mode.as_str());
+                parse_anc(value)?;
+                let mode = proxy.set_anc(value).map_err(|e| e.to_string())?;
+                emit(json, "anc", &mode);
             }
         },
-        "sidetone" => match params.first().map(String::as_str) {
+        "sidetone" => match params.first() {
             None => {
-                let level = headset.sidetone()?;
-                emit(json, "sidetone", level.as_str());
+                let level = proxy.sidetone().map_err(|e| e.to_string())?;
+                emit(json, "sidetone", &level);
             }
             Some(value) => {
-                let level =
-                    headset.set_sidetone_confirmed(parse_sidetone(value)?, CONFIRM_TIMEOUT)?;
-                emit(json, "sidetone", level.as_str());
+                parse_sidetone(value)?;
+                let level = proxy.set_sidetone(value).map_err(|e| e.to_string())?;
+                emit(json, "sidetone", &level);
             }
         },
         "mic" => {
-            let active = headset.mic_active()?;
+            let active = proxy.mic_active().map_err(|e| e.to_string())?;
             if json {
                 println!("{{\"mic_active\":{active}}}");
             } else {
@@ -136,115 +143,218 @@ fn run(args: &[String], json: bool) -> Result<(), jbl_quantum::Error> {
             }
         }
         "dial" => {
-            let pos = headset.dial()?;
+            let pos = proxy.dial().map_err(|e| e.to_string())?;
             if json {
                 println!("{{\"dial\":{pos},\"label\":\"{}\"}}", dial_label(pos));
             } else {
                 println!("{pos} ({})", dial_label(pos));
             }
         }
-        "lights" => match params.first().map(String::as_str) {
+        "lights" => match params.first() {
             None => {
-                let on = headset.lights_on()?;
+                let on = proxy.lights_on().map_err(|e| e.to_string())?;
                 emit(json, "lights", if on { "on" } else { "off" });
             }
             Some(value) => {
-                let on = headset.set_lights_confirmed(parse_on_off(value)?, CONFIRM_TIMEOUT)?;
+                let on = parse_on_off(value)?;
+                let on = proxy.set_lights(on).map_err(|e| e.to_string())?;
                 emit(json, "lights", if on { "on" } else { "off" });
             }
         },
         "rgb" => {
-            if !headset.connected()? {
-                return Err(jbl_quantum::Error::NotConnected);
-            }
-            cmd_rgb(&headset, params)?;
+            require_ready(&proxy)?;
+            cmd_rgb(&proxy, params)?;
             emit(json, "lighting", "applied");
         }
-        "watch" => loop {
-            let event = headset.next_event()?;
-            if json {
-                println!("{}", event_json(&event));
-            } else {
-                println!("{}  {}", clock(), event_text(&event));
-            }
-        },
-        other => {
-            return Err(jbl_quantum::Error::Invalid(format!(
-                "unknown command '{other}' (try --help)"
-            )))
-        }
+        "watch" => cmd_watch(&proxy, json)?,
+        other => return Err(format!("unknown command '{other}' (try --help)")),
     }
     Ok(())
 }
 
-fn cmd_rgb(headset: &Headset, params: &[String]) -> Result<(), jbl_quantum::Error> {
+/// Fails with the same wording `Headset::open_first` used to give when
+/// there was no live link, instead of silently showing default values.
+fn require_ready(proxy: &HeadsetProxyBlocking) -> Result<(), String> {
+    match proxy.link().map_err(|e| e.to_string())?.as_str() {
+        "ready" => Ok(()),
+        "no_dongle" => Err(jbl_quantum::Error::NotFound.to_string()),
+        "no_access" => Err(proxy.link_detail().unwrap_or_default()),
+        _ => Err(jbl_quantum::Error::NotConnected.to_string()),
+    }
+}
+
+fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
+    let link = proxy.link().map_err(|e| e.to_string())?;
+    let battery = proxy.battery().map_err(|e| e.to_string())?;
+    let anc = proxy.anc().map_err(|e| e.to_string())?;
+    let sidetone = proxy.sidetone().map_err(|e| e.to_string())?;
+    let mic_active = proxy.mic_active().map_err(|e| e.to_string())?;
+    let dial = proxy.dial().map_err(|e| e.to_string())?;
+    let lights_on = proxy.lights_on().map_err(|e| e.to_string())?;
+    let device_name = proxy.device_name().map_err(|e| e.to_string())?;
+    let serial = proxy.serial().map_err(|e| e.to_string())?;
+    let firmware = proxy.firmware().map_err(|e| e.to_string())?;
+
+    if json {
+        let fw: Vec<String> = firmware.iter().map(|f| format!("\"{f}\"")).collect();
+        println!(
+            "{{\"link\":\"{link}\",\"battery_percent\":{battery},\"anc\":\"{anc}\",\"sidetone\":\"{sidetone}\",\
+             \"mic_active\":{mic_active},\"dial\":{dial},\"lights_on\":{lights_on},\"device_name\":\"{}\",\"serial\":\"{}\",\"firmware\":[{}]}}",
+            escape(&device_name),
+            escape(&serial),
+            fw.join(",")
+        );
+    } else {
+        if link != "ready" {
+            println!("headset:   {}", link_note(&link));
+            println!("           values below are defaults until it reconnects");
+        }
+        println!("battery:   {battery}%");
+        println!("anc:       {anc}");
+        println!("sidetone:  {sidetone}");
+        println!("mic:       {}", if mic_active { "active" } else { "inactive" });
+        println!("dial:      {dial} ({})", dial_label(dial));
+        println!("lights:    {}", if lights_on { "on" } else { "off" });
+        println!("paired to: {device_name}");
+        println!("serial:    {serial}");
+        println!("firmware:  {}", firmware.join(", "));
+    }
+    Ok(())
+}
+
+fn link_note(link: &str) -> &'static str {
+    match link {
+        "no_dongle" => "no dongle plugged in",
+        "no_access" => "cannot access the dongle",
+        _ => "not connected (dongle present, headset off or out of range)",
+    }
+}
+
+fn cmd_rgb(proxy: &HeadsetProxyBlocking, params: &[String]) -> Result<(), String> {
     let mut brightness: u8 = 100;
     let mut positional: Vec<&str> = Vec::new();
     let mut it = params.iter();
     while let Some(arg) = it.next() {
         if arg == "--brightness" {
-            let value = it.next().ok_or_else(|| {
-                jbl_quantum::Error::Invalid("--brightness needs a value 0-100".into())
-            })?;
-            brightness = value.parse().map_err(|_| {
-                jbl_quantum::Error::Invalid(format!("invalid brightness '{value}'"))
-            })?;
+            let value = it.next().ok_or("--brightness needs a value 0-100")?;
+            brightness = value.parse().map_err(|_| format!("invalid brightness '{value}'"))?;
         } else {
             positional.push(arg);
         }
     }
 
     let [zone_name, effect_name, colours @ ..] = positional.as_slice() else {
-        return Err(jbl_quantum::Error::Invalid(
-            "usage: quantumenginectl rgb <zone> <effect> <colour>... (try --help)".into(),
-        ));
+        return Err("usage: quantumenginectl rgb <zone> <effect> <colour>... (try --help)".into());
     };
 
     let zones: &[Zone] = match *zone_name {
         "logo" => &[Zone::Logo],
         "ring" => &[Zone::Ring],
         "both" => &Zone::ALL,
-        other => {
-            return Err(jbl_quantum::Error::Invalid(format!(
-                "unknown zone '{other}' (logo, ring, both)"
-            )))
-        }
+        other => return Err(format!("unknown zone '{other}' (logo, ring, both)")),
     };
 
     let effect = Effect::from_name(effect_name).ok_or_else(|| {
         let names: Vec<&str> = Effect::KNOWN.iter().map(|(_, n)| *n).collect();
-        jbl_quantum::Error::Invalid(format!(
-            "unknown effect '{effect_name}' (one of: {})",
-            names.join(", ")
-        ))
+        format!("unknown effect '{effect_name}' (one of: {})", names.join(", "))
     })?;
 
     if colours.is_empty() {
-        return Err(jbl_quantum::Error::Invalid(
-            "give at least one colour, e.g. '#ff0000'".into(),
-        ));
+        return Err("give at least one colour, e.g. '#ff0000'".into());
     }
     if colours.len() > MAX_SLOTS {
-        return Err(jbl_quantum::Error::Invalid(format!(
-            "at most {MAX_SLOTS} colours, got {}",
-            colours.len()
-        )));
+        return Err(format!("at most {MAX_SLOTS} colours, got {}", colours.len()));
     }
 
     let palette: Vec<Colour> = colours
         .iter()
-        .map(|c| {
-            Colour::parse_hex(c).ok_or_else(|| {
-                jbl_quantum::Error::Invalid(format!("invalid colour '{c}' (expected #rrggbb)"))
-            })
-        })
+        .map(|c| Colour::parse_hex(c).ok_or_else(|| format!("invalid colour '{c}' (expected #rrggbb)")))
         .collect::<Result<_, _>>()?;
 
-    let request: Vec<ZoneLighting> = zones
+    let args: Vec<ZoneLightingArg> = zones
         .iter()
-        .map(|&zone| ZoneLighting { zone, brightness, palette: palette.clone(), effect })
+        .map(|&zone| ZoneLightingArg {
+            zone: match zone {
+                Zone::Logo => "logo".to_string(),
+                Zone::Ring => "ring".to_string(),
+            },
+            brightness,
+            colours: palette.iter().map(|c| (c.r, c.g, c.b)).collect(),
+            effect: effect.0,
+        })
         .collect();
-    headset.set_lighting_zones(&request)
+
+    proxy.set_lighting(args).map_err(|e| e.to_string())
+}
+
+/// State `watch` compares between polls, since the service exposes changes
+/// as properties rather than raw device events — see `quantumengine-dbus`.
+/// A physical Bluetooth reconnect or an unrecognised report, which the old
+/// direct-hardware `watch` could show, has no property here and so is not
+/// visible over D-Bus.
+#[derive(Clone, PartialEq)]
+struct WatchState {
+    link: String,
+    battery: u8,
+    anc: String,
+    sidetone: String,
+    mic_active: bool,
+    dial: u8,
+    lights_on: bool,
+}
+
+impl WatchState {
+    fn read(proxy: &HeadsetProxyBlocking) -> Result<Self, String> {
+        Ok(Self {
+            link: proxy.link().map_err(|e| e.to_string())?,
+            battery: proxy.battery().map_err(|e| e.to_string())?,
+            anc: proxy.anc().map_err(|e| e.to_string())?,
+            sidetone: proxy.sidetone().map_err(|e| e.to_string())?,
+            mic_active: proxy.mic_active().map_err(|e| e.to_string())?,
+            dial: proxy.dial().map_err(|e| e.to_string())?,
+            lights_on: proxy.lights_on().map_err(|e| e.to_string())?,
+        })
+    }
+}
+
+fn cmd_watch(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
+    let mut prev = WatchState::read(proxy)?;
+    loop {
+        std::thread::sleep(WATCH_POLL_EVERY);
+        let cur = WatchState::read(proxy)?;
+        if cur.link != prev.link {
+            print_watch_event(json, "link", &format!("\"{}\"", cur.link), &format!("link: {}", cur.link));
+        }
+        if cur.battery != prev.battery {
+            print_watch_event(json, "battery", &cur.battery.to_string(), &format!("battery: {}%", cur.battery));
+        }
+        if cur.anc != prev.anc {
+            print_watch_event(json, "anc", &format!("\"{}\"", cur.anc), &format!("anc: {}", cur.anc));
+        }
+        if cur.sidetone != prev.sidetone {
+            print_watch_event(json, "sidetone", &format!("\"{}\"", cur.sidetone), &format!("sidetone: {}", cur.sidetone));
+        }
+        if cur.mic_active != prev.mic_active {
+            let text = if cur.mic_active { "active" } else { "inactive" };
+            print_watch_event(json, "mic_active", &cur.mic_active.to_string(), &format!("mic: {text}"));
+        }
+        if cur.dial != prev.dial {
+            print_watch_event(json, "dial", &cur.dial.to_string(), &format!("dial: {} ({})", cur.dial, dial_label(cur.dial)));
+        }
+        if cur.lights_on != prev.lights_on {
+            let text = if cur.lights_on { "on" } else { "off" };
+            print_watch_event(json, "lights", &cur.lights_on.to_string(), &format!("lights: {text}"));
+        }
+        prev = cur;
+    }
+}
+
+fn print_watch_event(json: bool, key: &str, json_value: &str, text: &str) {
+    if json {
+        println!("{{\"event\":\"{key}\",\"value\":{json_value}}}");
+    } else {
+        println!("{}  {text}", clock());
+    }
 }
 
 fn emit(json: bool, key: &str, value: &str) {
@@ -265,79 +375,6 @@ fn dial_label(pos: u8) -> &'static str {
     }
 }
 
-fn print_status(s: &Status) {
-    if !s.connected {
-        println!("headset:   not connected (dongle present, headset off or out of range)");
-        println!("           values below are the dongle's last known state");
-    }
-    println!("battery:   {}%", s.battery_percent);
-    println!("anc:       {}", s.anc.as_str());
-    println!("sidetone:  {}", s.sidetone.as_str());
-    println!(
-        "mic:       {}",
-        if s.mic_active { "active" } else { "inactive" }
-    );
-    println!("dial:      {} ({})", s.dial, dial_label(s.dial));
-    println!("lights:    {}", if s.lights_on { "on" } else { "off" });
-    println!("paired to: {}", s.device_name);
-    println!("serial:    {}", s.serial);
-    println!("firmware:  {}", s.firmware.join(", "));
-}
-
-fn status_json(s: &Status) -> String {
-    let firmware: Vec<String> = s.firmware.iter().map(|f| format!("\"{f}\"")).collect();
-    format!(
-        "{{\"connected\":{},\"battery_percent\":{},\"anc\":\"{}\",\"sidetone\":\"{}\",\
-         \"mic_active\":{},\"dial\":{},\"lights_on\":{},\"device_name\":\"{}\",\"serial\":\"{}\",\"firmware\":[{}]}}",
-        s.connected,
-        s.battery_percent,
-        s.anc.as_str(),
-        s.sidetone.as_str(),
-        s.mic_active,
-        s.dial,
-        s.lights_on,
-        escape(&s.device_name),
-        escape(&s.serial),
-        firmware.join(",")
-    )
-}
-
-fn event_json(e: &jbl_quantum::Event) -> String {
-    use jbl_quantum::Event;
-    match e {
-        Event::Anc(m) => format!("{{\"event\":\"anc\",\"value\":\"{}\"}}", m.as_str()),
-        Event::Bluetooth(on) => format!("{{\"event\":\"bluetooth\",\"value\":{on}}}"),
-        Event::MicActive(on) => format!("{{\"event\":\"mic_active\",\"value\":{on}}}"),
-        Event::Lights(on) => format!("{{\"event\":\"lights\",\"value\":{on}}}"),
-        Event::Battery(pct) => format!("{{\"event\":\"battery\",\"value\":{pct}}}"),
-        Event::Dial(pos) => format!("{{\"event\":\"dial\",\"value\":{pos}}}"),
-        Event::Unknown { report_id, data } => {
-            let hex: Vec<String> = data.iter().map(|b| format!("\"{b:02x}\"")).collect();
-            format!(
-                "{{\"event\":\"unknown\",\"report_id\":{report_id},\"data\":[{}]}}",
-                hex.join(",")
-            )
-        }
-    }
-}
-
-fn event_text(e: &jbl_quantum::Event) -> String {
-    use jbl_quantum::Event;
-    let on_off = |b: bool| if b { "on" } else { "off" };
-    match e {
-        Event::Anc(m) => format!("anc: {}", m.as_str()),
-        Event::Bluetooth(on) => format!("bluetooth: {}", if *on { "active" } else { "inactive" }),
-        Event::MicActive(on) => format!("mic: {}", if *on { "active" } else { "inactive" }),
-        Event::Lights(on) => format!("lights: {}", on_off(*on)),
-        Event::Battery(pct) => format!("battery: {pct}%"),
-        Event::Dial(pos) => format!("dial: {pos} ({})", dial_label(*pos)),
-        Event::Unknown { report_id, data } => {
-            let hex: Vec<String> = data.iter().map(|b| format!("{b:02x}")).collect();
-            format!("unknown report 0x{report_id:02x}: {}", hex.join(" "))
-        }
-    }
-}
-
 /// Local wall-clock time as HH:MM:SS, without pulling in a date crate.
 fn clock() -> String {
     let now = unsafe { libc::time(std::ptr::null_mut()) };
@@ -350,35 +387,28 @@ fn escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn parse_anc(value: &str) -> Result<Anc, jbl_quantum::Error> {
+/// Validates an ANC value locally, so a typo fails fast without waiting on
+/// the service. The service parses it again regardless (see
+/// `dbus_service::parse_anc`), since it must trust no other caller either.
+fn parse_anc(value: &str) -> Result<(), String> {
     match value {
-        "off" => Ok(Anc::Off),
-        "on" => Ok(Anc::On),
-        "talkthru" | "tt" => Ok(Anc::TalkThru),
-        other => Err(jbl_quantum::Error::Invalid(format!(
-            "unknown anc mode '{other}' (off, on, talkthru)"
-        ))),
+        "off" | "on" => Ok(()),
+        "talkthru" => Ok(()),
+        other => Err(format!("unknown anc mode '{other}' (off, on, talkthru)")),
     }
 }
 
-fn parse_sidetone(value: &str) -> Result<Sidetone, jbl_quantum::Error> {
+fn parse_sidetone(value: &str) -> Result<(), String> {
     match value {
-        "off" => Ok(Sidetone::Off),
-        "low" => Ok(Sidetone::Low),
-        "mid" => Ok(Sidetone::Mid),
-        "high" => Ok(Sidetone::High),
-        other => Err(jbl_quantum::Error::Invalid(format!(
-            "unknown sidetone level '{other}' (off, low, mid, high)"
-        ))),
+        "off" | "low" | "mid" | "high" => Ok(()),
+        other => Err(format!("unknown sidetone level '{other}' (off, low, mid, high)")),
     }
 }
 
-fn parse_on_off(value: &str) -> Result<bool, jbl_quantum::Error> {
+fn parse_on_off(value: &str) -> Result<bool, String> {
     match value {
         "on" | "true" | "1" => Ok(true),
         "off" | "false" | "0" => Ok(false),
-        other => Err(jbl_quantum::Error::Invalid(format!(
-            "expected on or off, got '{other}'"
-        ))),
+        other => Err(format!("expected on or off, got '{other}'")),
     }
 }

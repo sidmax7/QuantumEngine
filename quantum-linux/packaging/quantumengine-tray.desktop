@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=QuantumEngine (tray)
+Comment=Headset tray icon and the background service the window, widget and CLI talk to
+Exec=quantumengine --tray
+Icon=quantumengine
+Terminal=false
+NoDisplay=true
+X-KDE-autostart-phase=2
+X-GNOME-Autostart-enabled=true

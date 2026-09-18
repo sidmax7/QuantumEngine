@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "sidmax"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Battery, noise control and lights for a JBL Quantum 810 Wireless headset, from the panel",
+        "EnabledByDefault": true,
+        "Icon": "audio-headphones",
+        "Id": "org.quantumengine.plasmoid",
+        "License": "MIT OR Apache-2.0",
+        "Name": "QuantumEngine",
+        "Version": "0.2.0",
+        "Website": "https://github.com/sidmax7/QuantumEngine"
+    },
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

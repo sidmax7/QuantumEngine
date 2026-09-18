@@ -9,4 +9,6 @@ rust-version.workspace = true
 
 [dependencies]
 jbl-quantum.workspace = true
+quantumengine-dbus.workspace = true
+zbus.workspace = true
 libc = "0.2"

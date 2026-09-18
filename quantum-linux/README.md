@@ -64,7 +64,13 @@ sudo udevadm control --reload
 ```
 
 Then replug the dongle. To get a menu entry, copy
-`packaging/quantumengine.desktop` to `~/.local/share/applications/`.
+`packaging/quantumengine.desktop` to `~/.local/share/applications/`. To start
+the tray at login, copy `packaging/quantumengine-tray.desktop` to
+`~/.config/autostart/`. For the Plasma widget:
+
+```sh
+kpackagetool6 --type Plasma/Applet --install packaging/plasmoid/org.quantumengine.plasmoid
+```
 
 The udev rule gives the logged-in user access to the dongle. Without it, both
 tools report a permission error.
@@ -80,6 +86,27 @@ is being applied, the controls are locked until the headset confirms it.
 The headset can't report its lighting colours, so the app remembers what you
 last applied. Applying lighting switches the lights on, because the headset only
 takes new colours at that moment.
+
+Only one process ever opens the dongle: `quantumengine --tray` (below). The
+window, the CLI and the Plasma widget all talk to it instead, so running
+several of them at once is never several clients fighting over the headset.
+
+## System tray
+
+`quantumengine --tray` runs in the background, owns the headset, and shows a
+tray icon: left-click opens the window, and the menu has noise control,
+sidetone and a lights toggle without opening it. It's the piece that starts
+first — the window, `quantumenginectl` and the widget all start it themselves
+if it isn't already running.
+
+The package starts it automatically at login. To stop that, disable
+"QuantumEngine (tray)" in your desktop's autostart settings.
+
+## Plasma widget
+
+On KDE Plasma, add **QuantumEngine** from *Add Widgets…* for battery, noise
+control and lights on the panel or desktop, without opening the window. It
+needs the `plasma5support` package, which most Plasma installs already have.
 
 ## Command line
 

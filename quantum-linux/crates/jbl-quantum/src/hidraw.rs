@@ -204,6 +204,37 @@ impl Hidraw {
     }
 }
 
+/// Bytes in and out of the device: the real hidraw ioctls implemented above,
+/// or — behind `QUANTUMENGINE_SIMULATE` — a simulated stand-in used for
+/// development and tests that do not have the headset plugged in (see
+/// `crate::sim`). [`crate::Headset`] only ever calls through this trait, so
+/// nothing above this layer can tell which one it is talking to.
+pub(crate) trait Transport: Send + Sync {
+    fn get_feature(&self, report_id: u8, len: usize) -> io::Result<Vec<u8>>;
+    fn get_feature_debug(&self, report_id: u8, len: usize) -> io::Result<(i32, Vec<u8>)>;
+    fn set_feature(&self, payload: &[u8]) -> io::Result<()>;
+    fn read_report(&self) -> io::Result<Vec<u8>>;
+    fn read_report_timeout(&self, timeout: std::time::Duration) -> io::Result<Option<Vec<u8>>>;
+}
+
+impl Transport for Hidraw {
+    fn get_feature(&self, report_id: u8, len: usize) -> io::Result<Vec<u8>> {
+        Hidraw::get_feature(self, report_id, len)
+    }
+    fn get_feature_debug(&self, report_id: u8, len: usize) -> io::Result<(i32, Vec<u8>)> {
+        Hidraw::get_feature_debug(self, report_id, len)
+    }
+    fn set_feature(&self, payload: &[u8]) -> io::Result<()> {
+        Hidraw::set_feature(self, payload)
+    }
+    fn read_report(&self) -> io::Result<Vec<u8>> {
+        Hidraw::read_report(self)
+    }
+    fn read_report_timeout(&self, timeout: std::time::Duration) -> io::Result<Option<Vec<u8>>> {
+        Hidraw::read_report_timeout(self, timeout)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

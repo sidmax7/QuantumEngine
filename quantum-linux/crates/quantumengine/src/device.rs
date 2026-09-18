@@ -13,7 +13,8 @@
 //! reading the battery or the lights state makes the device send another one.
 
 use jbl_quantum::{Anc, Error, Event, Headset, Sidetone, ZoneLighting, CONFIRM_TIMEOUT};
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::io;
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -24,11 +25,34 @@ const REOPEN_EVERY: Duration = Duration::from_secs(1);
 /// Longest time a command waits before it is picked up.
 const EVENT_WAIT: Duration = Duration::from_millis(50);
 
+/// Where a command's outcome is delivered. The window only watches
+/// [`Snapshot`] and passes [`no_reply`]; the D-Bus service (`dbus_service`)
+/// blocks on one of these to answer its own callers.
+pub type Reply<T> = Sender<Result<T, Error>>;
+
+/// A reply channel nobody is listening to.
+pub fn no_reply<T>() -> Reply<T> {
+    mpsc::channel().0
+}
+
 pub enum Command {
-    Anc(Anc),
-    Sidetone(Sidetone),
-    Lights(bool),
-    Lighting(Vec<ZoneLighting>),
+    Anc(Anc, Reply<Anc>),
+    Sidetone(Sidetone, Reply<Sidetone>),
+    Lights(bool, Reply<bool>),
+    Lighting(Vec<ZoneLighting>, Reply<()>),
+}
+
+impl Command {
+    /// Send `err` to whichever reply channel this command carries, ignoring a
+    /// receiver that has already gone away.
+    pub(crate) fn fail(self, err: Error) {
+        match self {
+            Command::Anc(_, r) => drop(r.send(Err(err))),
+            Command::Sidetone(_, r) => drop(r.send(Err(err))),
+            Command::Lights(_, r) => drop(r.send(Err(err))),
+            Command::Lighting(_, r) => drop(r.send(Err(err))),
+        }
+    }
 }
 
 /// What the dongle and headset are doing.
@@ -100,7 +124,10 @@ pub fn run(shared: Shared, commands: Receiver<Command>, repaint: impl Fn()) {
         let until = Instant::now() + REOPEN_EVERY;
         while Instant::now() < until {
             match worker.commands.recv_timeout(EVENT_WAIT) {
-                Ok(_) => worker.update(|s| s.error = Some("no headset dongle is available".into())),
+                Ok(cmd) => {
+                    worker.update(|s| s.error = Some("no headset dongle is available".into()));
+                    cmd.fail(Error::NotFound);
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
             }
@@ -198,42 +225,55 @@ impl<F: Fn()> Worker<F> {
         Ok(())
     }
 
-    /// Run one command. Device-level failures other than a lost dongle are
-    /// shown to the user and do not end the session.
+    /// Run one command and deliver its outcome to the caller's reply channel.
+    /// Device-level failures other than a lost dongle are shown to the user
+    /// and do not end the session.
     fn execute(&self, h: &Headset, cmd: Command) -> Result<(), Error> {
-        let pending = match &cmd {
-            Command::Anc(m) => Pending::Anc(*m),
-            Command::Sidetone(l) => Pending::Sidetone(*l),
-            Command::Lights(on) => Pending::Lights(*on),
-            Command::Lighting(_) => Pending::Lighting,
-        };
-        self.update(|s| s.pending = Some(pending));
+        match cmd {
+            Command::Anc(m, reply) => {
+                self.update(|s| s.pending = Some(Pending::Anc(m)));
+                self.finish(reply, h.set_anc_confirmed(m, CONFIRM_TIMEOUT), |s, m| s.anc = Some(m))
+            }
+            Command::Sidetone(l, reply) => {
+                self.update(|s| s.pending = Some(Pending::Sidetone(l)));
+                self.finish(reply, h.set_sidetone_confirmed(l, CONFIRM_TIMEOUT), |s, l| s.sidetone = Some(l))
+            }
+            Command::Lights(on, reply) => {
+                self.update(|s| s.pending = Some(Pending::Lights(on)));
+                self.finish(reply, h.set_lights_confirmed(on, CONFIRM_TIMEOUT), |s, on| s.lights_on = Some(on))
+            }
+            Command::Lighting(zones, reply) => {
+                self.update(|s| s.pending = Some(Pending::Lighting));
+                self.finish(reply, h.set_lighting_zones(&zones), |s, ()| s.lights_on = Some(true))
+            }
+        }
+    }
 
-        let result = match cmd {
-            Command::Anc(m) => h
-                .set_anc_confirmed(m, CONFIRM_TIMEOUT)
-                .map(|m| self.update(|s| s.anc = Some(m))),
-            Command::Sidetone(l) => h
-                .set_sidetone_confirmed(l, CONFIRM_TIMEOUT)
-                .map(|l| self.update(|s| s.sidetone = Some(l))),
-            Command::Lights(on) => h
-                .set_lights_confirmed(on, CONFIRM_TIMEOUT)
-                .map(|on| self.update(|s| s.lights_on = Some(on))),
-            Command::Lighting(zones) => h
-                .set_lighting_zones(&zones)
-                .map(|()| self.update(|s| s.lights_on = Some(true))),
-        };
-
+    /// Apply one command's result to the snapshot, answer its reply channel,
+    /// and return `Err` only for a lost-dongle failure — that one ends
+    /// `serve_inner` so `run` can go back to reconnecting.
+    fn finish<T: Copy>(
+        &self,
+        reply: Reply<T>,
+        result: Result<T, Error>,
+        apply: impl FnOnce(&mut Snapshot, T),
+    ) -> Result<(), Error> {
         match result {
-            Ok(()) => {
+            Ok(value) => {
                 self.update(|s| {
+                    apply(s, value);
                     s.pending = None;
                     s.error = None;
                 });
+                drop(reply.send(Ok(value)));
                 Ok(())
             }
             Err(Error::Io(e)) => {
                 self.update(|s| s.pending = None);
+                // A distinct `io::Error` carrying the same kind and message,
+                // since `Error` cannot be cloned to hand one copy to the
+                // reply channel and another to `serve_inner`.
+                drop(reply.send(Err(Error::Io(io::Error::new(e.kind(), e.to_string())))));
                 Err(Error::Io(e))
             }
             Err(e) => {
@@ -241,6 +281,7 @@ impl<F: Fn()> Worker<F> {
                     s.pending = None;
                     s.error = Some(e.to_string());
                 });
+                drop(reply.send(Err(e)));
                 Ok(())
             }
         }

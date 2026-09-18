@@ -10,5 +10,14 @@ rust-version = "1.88"
 
 [dependencies]
 jbl-quantum.workspace = true
+quantumengine-dbus.workspace = true
+zbus.workspace = true
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "persistence"] }
 serde = { version = "1", features = ["derive"] }
+# Tray icon (StatusNotifierItem). async-io matches zbus's own default backend
+# above, so the process runs one non-tokio executor, not two.
+ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
+# Decodes the embedded icon PNG into the ARGB pixels ksni wants. Same version
+# eframe already pulls in, just with fewer features.
+image = { version = "0.25", default-features = false, features = ["png"] }
+notify-rust = "4"

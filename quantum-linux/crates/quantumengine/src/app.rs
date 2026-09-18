@@ -54,7 +54,7 @@ impl App {
         let worker_state = shared.clone();
         std::thread::Builder::new()
             .name("headset".into())
-            .spawn(move || device::run(worker_state, rx, move || ctx.request_repaint()))
+            .spawn(move || crate::dbus_client::run(worker_state, rx, move || ctx.request_repaint()))
             .expect("failed to start the headset thread");
 
         Self { shared, commands, saved }
@@ -99,7 +99,7 @@ impl App {
         };
         let options = [(Anc::Off, "Off"), (Anc::On, "ANC"), (Anc::TalkThru, "TalkThru")];
         if let Some(mode) = segmented(ui, pending.or(snap.anc), &options) {
-            self.send(Command::Anc(mode));
+            self.send(Command::Anc(mode, device::no_reply()));
         }
         ui.label(
             RichText::new(match pending.or(snap.anc) {
@@ -125,7 +125,7 @@ impl App {
             (Sidetone::High, "High"),
         ];
         if let Some(level) = segmented(ui, pending.or(snap.sidetone), &options) {
-            self.send(Command::Sidetone(level));
+            self.send(Command::Sidetone(level, device::no_reply()));
         }
         ui.label(RichText::new("How much of your own voice you hear.").weak());
     }
@@ -139,7 +139,7 @@ impl App {
             _ => snap.lights_on,
         };
         if let Some(on) = segmented(ui, shown, &[(false, "Off"), (true, "On")]) {
-            self.send(Command::Lights(on));
+            self.send(Command::Lights(on, device::no_reply()));
         }
 
         egui::CollapsingHeader::new("Colours and effects")
@@ -160,10 +160,10 @@ impl App {
                     .on_hover_text("Switches the lights off, sends the colours, and switches them on")
                     .clicked()
                 {
-                    self.send(Command::Lighting(vec![
-                        to_lighting(Zone::Logo, &self.saved.logo),
-                        to_lighting(Zone::Ring, &self.saved.ring),
-                    ]));
+                    self.send(Command::Lighting(
+                        vec![to_lighting(Zone::Logo, &self.saved.logo), to_lighting(Zone::Ring, &self.saved.ring)],
+                        device::no_reply(),
+                    ));
                 }
             });
     }

@@ -56,13 +56,24 @@
 //! that is an endless loop. Use the event's value. A lights event produced by a
 //! read carries the state at the time of that read and can arrive just after a
 //! later write, so avoid reading the lights state around lighting writes.
+//!
+//! # Developing without the headset
+//!
+//! [`Headset::open_simulated`] returns a simulated headset that approximates
+//! the settling and event behaviour above, so code built on this crate can be
+//! developed and tested without the real dongle plugged in. Setting the
+//! [`SIMULATE_ENV`] environment variable switches [`Headset::open_first`] to
+//! it as well, which is convenient for manually trying out a client:
+//! `QUANTUMENGINE_SIMULATE=1 cargo run`.
 
 mod hidraw;
 pub mod protocol;
+mod sim;
 
 pub use hidraw::HidrawNode;
 pub use protocol::{Anc, Colour, Effect, Sidetone, Zone, MAX_SLOTS, PRODUCT_ID, VENDOR_ID};
 
+use hidraw::Transport;
 use protocol::feature;
 use std::collections::VecDeque;
 use std::fmt;
@@ -165,13 +176,20 @@ pub struct ZoneLighting {
     pub effect: Effect,
 }
 
-/// An open connection to the headset dongle.
+/// An open connection to the headset dongle, real or simulated.
 pub struct Headset {
-    hid: hidraw::Hidraw,
+    hid: Box<dyn Transport>,
     /// Events that arrived while a `set_*_confirmed` call was waiting for
     /// something else. Handed out by `next_event*` before new ones.
     pending: Mutex<VecDeque<Event>>,
+    simulated: bool,
 }
+
+/// The environment variable that switches [`Headset::open_first`] to a
+/// simulated headset instead of discovering real hardware. Any value works,
+/// except `off`, which simulates the dongle being plugged in but the headset
+/// itself being switched off — see [`Headset::open_simulated_disconnected`].
+pub const SIMULATE_ENV: &str = "QUANTUMENGINE_SIMULATE";
 
 impl Headset {
     /// List every matching dongle.
@@ -179,17 +197,53 @@ impl Headset {
         Ok(hidraw::discover(VENDOR_ID, PRODUCT_ID)?)
     }
 
-    /// Open the first dongle found.
+    /// Open the first dongle found, or a simulated headset if
+    /// [`SIMULATE_ENV`] is set — handy for development and manual testing
+    /// without the real hardware plugged in.
     pub fn open_first() -> Result<Self> {
+        if let Ok(mode) = std::env::var(SIMULATE_ENV) {
+            return Ok(if mode.eq_ignore_ascii_case("off") {
+                Self::open_simulated_disconnected()
+            } else {
+                Self::open_simulated()
+            });
+        }
         let node = Self::discover()?.into_iter().next().ok_or(Error::NotFound)?;
         Self::open(&node)
     }
 
     pub fn open(node: &HidrawNode) -> Result<Self> {
         Ok(Self {
-            hid: hidraw::Hidraw::open(&node.path)?,
+            hid: Box::new(hidraw::Hidraw::open(&node.path)?),
             pending: Mutex::new(VecDeque::new()),
+            simulated: false,
         })
+    }
+
+    /// A simulated headset that behaves as though connected, for tests and
+    /// development without hardware. See the `sim` module docs for how
+    /// closely it matches the real device.
+    pub fn open_simulated() -> Self {
+        Self {
+            hid: Box::new(sim::SimTransport::new()),
+            pending: Mutex::new(VecDeque::new()),
+            simulated: true,
+        }
+    }
+
+    /// Like [`Headset::open_simulated`], but the simulated headset reads as
+    /// switched off — for testing the "dongle present, headset off" path.
+    pub fn open_simulated_disconnected() -> Self {
+        Self {
+            hid: Box::new(sim::SimTransport::new_disconnected()),
+            pending: Mutex::new(VecDeque::new()),
+            simulated: true,
+        }
+    }
+
+    /// Whether this is a simulated headset rather than real hardware.
+    pub fn is_simulated(&self) -> bool {
+        self.simulated
     }
 
     /// Raw `GET_REPORT(Feature)`, for diagnostics and for reports this crate
@@ -374,7 +428,9 @@ impl Headset {
     pub fn firmware(&self) -> Result<Vec<String>> {
         let data = self.hid.get_feature(feature::FIRMWARE, 12)?;
         Ok(data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| format!("{}.{}.{}", c[0], c[1], c[2]))
             .collect())
     }
