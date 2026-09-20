@@ -1,6 +1,6 @@
 # Maintainer: sidmax
 pkgname=quantumengine
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting (GUI, tray, Plasma widget, CLI)"
 arch=('x86_64' 'aarch64')
@@ -15,7 +15,7 @@ optdepends=('plasma5support: the QuantumEngine Plasma widget'
 # The app lives in the quantum-linux/ subdirectory of the QuantumEngine repo,
 # alongside research material that isn't part of this package.
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('de5c7e3c24ee62b6547a8c241ef9ff3da155c679e799ff20f89497e3b87d7c42')
+sha256sums=('UPDATE-AFTER-TAGGING-v0.2.1')
 
 _srcdir=QuantumEngine-$pkgver/quantum-linux
 

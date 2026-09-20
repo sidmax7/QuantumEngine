@@ -8,13 +8,13 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sidmax7/QuantumEngine"
 rust-version = "1.88"
 
 [workspace.dependencies]
-jbl-quantum = { path = "crates/jbl-quantum", version = "0.2.0" }
-quantumengine-dbus = { path = "crates/quantumengine-dbus", version = "0.2.0" }
+jbl-quantum = { path = "crates/jbl-quantum", version = "0.2.1" }
+quantumengine-dbus = { path = "crates/quantumengine-dbus", version = "0.2.1" }
 zbus = "5"

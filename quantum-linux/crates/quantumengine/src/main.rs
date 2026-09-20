@@ -49,7 +49,14 @@ fn run_tray() -> Result<(), Box<dyn std::error::Error>> {
     let shared = device::Shared::default();
     let (commands, command_rx) = std::sync::mpsc::channel();
 
-    let (connection, dbus_refresh) = dbus_service::serve(shared.clone(), commands.clone())?;
+    let Some((connection, dbus_refresh)) = dbus_service::serve(shared.clone(), commands.clone())? else {
+        // The widget, the window, `quantumenginectl` and the login autostart
+        // can all start a service at about the same moment; whichever loses
+        // the bus name just leaves, before it makes a tray icon or opens the
+        // dongle.
+        println!("quantumengine: already running");
+        return Ok(());
+    };
     let tray_handle = tray::spawn(shared.clone(), commands)?;
     let tray_refresh = tray::refresh(tray_handle);
 

@@ -200,17 +200,35 @@ fn link_str(link: &Link) -> String {
 /// the one worker thread that actually drains `commands` and keeps `shared`
 /// current (see `main::run_tray`).
 ///
-/// Returns the connection, which must be kept alive for as long as the
-/// service should keep running (dropping it releases the bus name), and a
+/// Returns `None` when another `--tray` already owns the name. The claim is
+/// made without replacement on purpose: zbus's default flags would let a
+/// second instance take the name over and leave the first running as a
+/// duplicate tray icon that still holds the dongle open. The caller must
+/// then exit before it starts a tray icon or touches the headset.
+///
+/// Otherwise returns the connection, which must be kept alive for as long as
+/// the service should keep running (dropping it releases the bus name), and a
 /// callback the caller must invoke every time `shared` changes. That callback
 /// emits a `PropertiesChanged` for every property — a broad brush rather than
 /// diffing field by field, but changes only happen on user action or a
 /// physical control, so the traffic this produces is small.
-pub fn serve(shared: Shared, commands: Sender<device::Command>) -> zbus::Result<(zbus::blocking::Connection, impl Fn())> {
+pub fn serve(
+    shared: Shared,
+    commands: Sender<device::Command>,
+) -> zbus::Result<Option<(zbus::blocking::Connection, impl Fn())>> {
     let connection = zbus::blocking::connection::Builder::session()?
-        .name(quantumengine_dbus::BUS_NAME)?
         .serve_at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands })?
         .build()?;
+
+    match connection.request_name_with_flags(
+        quantumengine_dbus::BUS_NAME,
+        fdo::RequestNameFlags::DoNotQueue.into(),
+    ) {
+        Ok(fdo::RequestNameReply::PrimaryOwner | fdo::RequestNameReply::AlreadyOwner) => {}
+        // zbus reports a taken name as an error rather than an `Exists` reply.
+        Ok(_) | Err(zbus::Error::NameTaken) => return Ok(None),
+        Err(e) => return Err(e),
+    }
 
     let iface_ref = connection
         .object_server()
@@ -242,5 +260,5 @@ pub fn serve(shared: Shared, commands: Sender<device::Command>) -> zbus::Result<
         }
     };
 
-    Ok((connection, notify_changed))
+    Ok(Some((connection, notify_changed)))
 }
