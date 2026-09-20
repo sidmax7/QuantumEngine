@@ -15,7 +15,7 @@ optdepends=('plasma5support: the QuantumEngine Plasma widget'
 # The app lives in the quantum-linux/ subdirectory of the QuantumEngine repo,
 # alongside research material that isn't part of this package.
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('UPDATE-AFTER-TAGGING-v0.2.1')
+sha256sums=('8796e64775b13d8f1571e8552404b1810ca40e9fa9ee715229418e505e58e325')
 
 _srcdir=QuantumEngine-$pkgver/quantum-linux
 
