@@ -198,7 +198,9 @@ fn probe_reads(hid: &dyn Transport) -> Vec<Reading> {
         byte_read(hid, "dial", feature::DIAL, |b| b <= 16, |b| format!("{b:02x} ({b}/16)")),
         byte_read(hid, "lights", feature::LIGHTS_MIRROR, |b| b <= 1, |b| format!("{b:02x}")),
         bytes_read(hid, "serial", feature::SERIAL, 16, printable),
-        bytes_read(hid, "firmware", feature::FIRMWARE, 12, |b| b.len() == 12),
+        // Three bytes per version: the 810 reports four (headset and dongle
+        // parts), a wired Quantum 400 just one.
+        bytes_read(hid, "firmware", feature::FIRMWARE, 12, |b| !b.is_empty() && b.len() % 3 == 0),
         bytes_read(hid, "host name", feature::DEVICE_NAME, 63, |b| b.first().is_some_and(|n| *n as usize <= 61)),
     ]
 }

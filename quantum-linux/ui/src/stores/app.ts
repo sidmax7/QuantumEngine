@@ -102,6 +102,8 @@ export const useApp = defineStore("app", () => {
   const headset = computed(() => state.value.headset);
   const serviceUp = computed(() => state.value.service === "up");
   const ready = computed(() => serviceUp.value && headset.value.link === "ready");
+  /** A USB-wired model, such as the Quantum 400: no battery or noise control. */
+  const wired = computed(() => (state.value.model ?? state.value.unverified.model)?.family === "Wired");
   /** Headset controls take one change at a time. */
   const locked = computed(() => !ready.value || pending.value !== null || headset.value.busy);
   const lightingDirty = computed(() => {
@@ -262,6 +264,7 @@ export const useApp = defineStore("app", () => {
     headset,
     serviceUp,
     ready,
+    wired,
     locked,
     lightingDirty,
     start,

@@ -21,7 +21,9 @@ const draft = computed(() => app.draft);
 
 const ANC_LABELS: Record<string, string> = { off: "Off", on: "ANC", talkthru: "TalkThru" };
 
-const noiseReading = computed(() => (ready.value ? (ANC_LABELS[h.value.anc] ?? "—") : "—"));
+const noiseReading = computed(() =>
+  app.wired ? "None" : ready.value ? (ANC_LABELS[h.value.anc] ?? "—") : "—",
+);
 const micReading = computed(() => (ready.value ? (h.value.micActive ? "Live" : "Muted") : "—"));
 const eqReading = computed(() => {
   if (!app.serviceUp) return "—";

@@ -47,6 +47,7 @@ const LABELS: Record<string, string> = {
   caveat: "Works, with a catch",
   untested: "Untested",
   broken: "Doesn't work",
+  absent: "Not on this model",
 };
 const FEATURES: [string, string][] = [
   ["reads", "Battery and status"],
@@ -86,6 +87,20 @@ const Q800: ModelDto = {
     lighting: ["untested", "Rebuilt in 0.4.5 to work the way JBL's own app drives the 800; not tried yet."],
   }),
 };
+const Q400: ModelDto = {
+  id: "0ecb:20ee",
+  name: "JBL Quantum 400",
+  family: "Wired",
+  kind: "headset",
+  verified: false,
+  zones: ["logo"],
+  features: features({
+    reads: ["reported", "Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link.", "issue #4"],
+    anc: ["absent", "", "JBL's app has none for it"],
+    lighting: ["untested", "JBL's own app drives its logo the same way as the 810's lights."],
+    eq: ["caveat", "Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own.", "issue #4"],
+  }),
+};
 const STREAM: ModelDto = {
   id: "0ecb:205f",
   name: "JBL Quantum Stream",
@@ -98,7 +113,9 @@ const STREAM: ModelDto = {
 
 function scenarioState(scenario: string): StateDto {
   const unverified = scenario.startsWith("unverified");
-  const using = scenario === "unverifiedUse";
+  // `unverifiedWired`: a Quantum 400 in use, which has no battery or noise control.
+  const wired = scenario === "unverifiedWired";
+  const using = scenario === "unverifiedUse" || wired;
   const ready = !["off", "nodongle", "noaccess", "down"].includes(scenario) && (!unverified || using);
   return {
     service: scenario === "down" ? "down" : "up",
@@ -145,15 +162,15 @@ function scenarioState(scenario: string): StateDto {
         ? { id: "0ecb:205f", name: "JBL Quantum Stream", access: "", inUse: false, allowed: [], model: STREAM }
         : unverified
           ? {
-              id: "0ecb:203e",
-              name: "JBL Quantum 800",
+              id: wired ? "0ecb:20ee" : "0ecb:203e",
+              name: wired ? "JBL Quantum 400" : "JBL Quantum 800",
               access: scenario === "unverifiedAccess" ? "cannot open /dev/hidraw3: Permission denied (os error 13)" : "",
               inUse: using,
-              allowed: using ? ["anc"] : [],
-              model: Q800,
+              allowed: wired ? ["sidetone", "lights"] : using ? ["anc"] : [],
+              model: wired ? Q400 : Q800,
             }
           : { id: "", name: "", access: "", inUse: false, allowed: [], model: null },
-    model: ready ? (using ? Q800 : Q810) : null,
+    model: ready ? (wired ? Q400 : using ? Q800 : Q810) : null,
     update: {
       serviceVersion: scenario === "outdated" ? "" : "0.3.0",
       available: scenario === "update" ? "0.3.1" : "",

@@ -1,6 +1,6 @@
 # Maintainer: sidmax
 pkgname=quantumengine
-pkgver=0.4.7
+pkgver=0.4.8
 pkgrel=1
 pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting, EQ, virtual surround (GUI, tray, Plasma widget, CLI)"
 arch=('x86_64' 'aarch64')

@@ -118,7 +118,7 @@ export type FeatureDto = {
 	/**  `"reads"` | `"anc"` | `"sidetone"` | `"lights"` | `"lighting"` | `"eq"`. */
 	id: string,
 	label: string,
-	/**  `"verified"` | `"reported"` | `"caveat"` | `"untested"` | `"broken"`. */
+	/**  `"verified"` | `"reported"` | `"caveat"` | `"untested"` | `"broken"` | `"absent"`. */
 	status: string,
 	statusLabel: string,
 	note: string,

@@ -78,7 +78,7 @@ pub struct FeatureDto {
     /// `"reads"` | `"anc"` | `"sidetone"` | `"lights"` | `"lighting"` | `"eq"`.
     pub id: String,
     pub label: String,
-    /// `"verified"` | `"reported"` | `"caveat"` | `"untested"` | `"broken"`.
+    /// `"verified"` | `"reported"` | `"caveat"` | `"untested"` | `"broken"` | `"absent"`.
     pub status: String,
     pub status_label: String,
     pub note: String,

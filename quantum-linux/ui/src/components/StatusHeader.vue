@@ -6,7 +6,7 @@ import { LOW_BATTERY, useApp } from "../stores/app";
 
 const app = useApp();
 
-const battery = computed(() => (app.ready ? app.headset.battery : null));
+const battery = computed(() => (app.ready && !app.wired ? app.headset.battery : null));
 const low = computed(() => battery.value !== null && battery.value <= LOW_BATTERY);
 
 /** A short state, and a sentence on what to do about it. */
@@ -16,6 +16,7 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
   if (s.service === "down") return { title: "Service stopped", detail: s.serviceError || "The background service isn't running.", live: false };
   switch (s.headset.link) {
     case "ready":
+      if (app.wired) return { title: "Connected", detail: "Plugged in over USB", live: true };
       return { title: "Connected", detail: s.headset.deviceName ? `Paired as ${s.headset.deviceName}` : "Paired", live: true };
     case "headset_off":
       return { title: "Headset off", detail: "The dongle is plugged in. Switch the headset on, or bring it closer.", live: false };
@@ -45,7 +46,11 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
 
 <template>
   <header class="status">
-    <div class="battery" :class="{ low, empty: battery === null }">
+    <div v-if="app.wired" class="battery empty">
+      <span class="figure num">USB</span>
+      <span class="label">Wired, no battery</span>
+    </div>
+    <div v-else class="battery" :class="{ low, empty: battery === null }">
       <span class="figure num" aria-hidden="true">{{ battery ?? "--" }}</span>
       <span v-if="battery !== null" class="unit" aria-hidden="true">%</span>
       <span class="visually-hidden">Battery {{ battery === null ? "unknown" : `${battery} percent` }}</span>

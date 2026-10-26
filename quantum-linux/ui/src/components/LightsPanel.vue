@@ -9,6 +9,11 @@ const app = useApp();
 
 const lightsPending = computed(() => app.pending?.startsWith("lights:") ?? false);
 const applying = computed(() => app.pending === "lighting");
+/** The zones this model lights up; a Quantum 400 has only its logo. */
+const zones = computed(() => {
+  const m = app.state.model ?? app.state.unverified.model;
+  return m?.zones.length ? m.zones : ["ring", "logo"];
+});
 </script>
 
 <template>
@@ -29,8 +34,8 @@ const applying = computed(() => app.pending === "lighting");
     </PanelField>
 
     <div class="zones">
-      <ZoneEditor zone="ring" title="Ring" />
-      <ZoneEditor zone="logo" title="Logo" />
+      <ZoneEditor v-if="zones.includes('ring')" zone="ring" title="Ring" />
+      <ZoneEditor v-if="zones.includes('logo')" zone="logo" title="Logo" />
     </div>
 
     <div class="actions" :class="{ dirty: app.lightingDirty }">

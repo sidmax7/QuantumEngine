@@ -46,6 +46,9 @@ function record(id: string): FeatureDto | undefined {
   return id === "lights" ? lightsNote() : known(SWITCHES.find((s) => s.id === id)!.feature);
 }
 
+/** The switches for what this model has: a wired one has no noise control. */
+const switches = computed(() => SWITCHES.filter((s) => record(s.id)?.status !== "absent"));
+
 function allow(feature: string, on: boolean) {
   const next = new Set(u.value.allowed);
   if (on) next.add(feature);
@@ -95,7 +98,8 @@ async function copyReport() {
           <li v-for="f in model.features" :key="f.id">
             <span class="fname">{{ f.label }}</span>
             <SupportChip :feature="f" />
-            <span v-if="f.note || f.source" class="note">
+            <!-- Always there, empty or not, so each feature keeps its own row. -->
+            <span class="note">
               {{ f.note }}<template v-if="f.source"> ({{ f.source }})</template>
             </span>
           </li>
@@ -158,7 +162,7 @@ async function copyReport() {
           Each one sends commands built for the 810. Turn on only what you are happy to try; they may not behave on
           this model.
         </p>
-        <div v-for="s in SWITCHES" :key="s.id" class="switch-row feature">
+        <div v-for="s in switches" :key="s.id" class="switch-row feature">
           <span class="what">
             <span class="title-line">
               {{ s.label }}

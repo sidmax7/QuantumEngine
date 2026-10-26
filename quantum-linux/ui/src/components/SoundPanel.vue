@@ -47,7 +47,7 @@ const noiseHint = computed(() => {
 
 <template>
   <div class="panel">
-    <PanelField title="Noise control" :hint="noiseHint">
+    <PanelField v-if="!app.wired" title="Noise control" :hint="noiseHint">
       <SegmentedControl
         label="Noise control"
         :options="NOISE"

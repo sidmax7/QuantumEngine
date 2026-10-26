@@ -221,6 +221,9 @@ pub struct Headset {
     /// something else. Handed out by `next_event*` before new ones.
     pending: Mutex<VecDeque<Event>>,
     simulated: bool,
+    /// A USB-wired model (see [`models::Family::Wired`]): no wireless link,
+    /// battery or noise control, and on whenever it is plugged in.
+    wired: bool,
 }
 
 /// The environment variable that switches [`Headset::open_first`] to a
@@ -265,6 +268,7 @@ impl Headset {
             hid: Box::new(hidraw::Hidraw::open(&node.path)?),
             pending: Mutex::new(VecDeque::new()),
             simulated: false,
+            wired: models::lookup(node.vendor_id, node.product_id).is_some_and(|m| m.family == models::Family::Wired),
         })
     }
 
@@ -276,6 +280,7 @@ impl Headset {
             hid: Box::new(sim::SimTransport::new()),
             pending: Mutex::new(VecDeque::new()),
             simulated: true,
+            wired: false,
         }
     }
 
@@ -286,12 +291,19 @@ impl Headset {
             hid: Box::new(sim::SimTransport::new_disconnected()),
             pending: Mutex::new(VecDeque::new()),
             simulated: true,
+            wired: false,
         }
     }
 
     /// Whether this is a simulated headset rather than real hardware.
     pub fn is_simulated(&self) -> bool {
         self.simulated
+    }
+
+    /// Whether this is a USB-wired model, which has no wireless link,
+    /// battery or noise control to read.
+    pub fn is_wired(&self) -> bool {
+        self.wired
     }
 
     /// Raw `GET_REPORT(Feature)`, for diagnostics and for reports this crate
@@ -332,8 +344,12 @@ impl Headset {
 
     /// Whether the headset itself is switched on and linked to the dongle.
     /// The dongle answers regardless, so this is the headset's state, not the
-    /// dongle's.
+    /// dongle's. A wired model has no link to report (JBL's app reads none
+    /// for the Quantum 400) and is on whenever it is plugged in.
     pub fn connected(&self) -> Result<bool> {
+        if self.wired {
+            return Ok(true);
+        }
         Ok(self.read_u8(feature::CONNECTION)? != 0)
     }
 
@@ -886,6 +902,16 @@ mod tests {
         // The washed-out reds: GTK's red barely lights green and blue.
         assert_eq!([0xef, 0x29, 0x29].map(|c| led_drive(c, 100)), [220, 6, 6]);
         assert_eq!((led_drive(0, 100), led_drive(255, 100)), (0, 255));
+    }
+
+    #[test]
+    fn a_wired_model_is_on_while_plugged_in() {
+        // The simulated dongle reports its headset off; a wired model has no
+        // link to ask about (the Quantum 400 doesn't answer 0x68 at all).
+        let mut h = Headset::open_simulated_disconnected();
+        assert!(!h.connected().unwrap());
+        h.wired = true;
+        assert!(h.connected().unwrap());
     }
 
     #[test]

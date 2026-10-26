@@ -255,8 +255,12 @@ fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
             println!("headset:   {}", link_note(&link));
             println!("           values below are defaults until it reconnects");
         }
-        println!("battery:   {battery}%");
-        println!("anc:       {anc}");
+        if model.is_some_and(|m| m.family == jbl_quantum::models::Family::Wired) {
+            println!("power:     wired (no battery or noise control)");
+        } else {
+            println!("battery:   {battery}%");
+            println!("anc:       {anc}");
+        }
         println!("sidetone:  {sidetone}");
         println!("mic:       {}", if mic_active { "active" } else { "inactive" });
         println!("dial:      {dial} ({})", dial_label(dial));

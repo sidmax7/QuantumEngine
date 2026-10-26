@@ -107,6 +107,8 @@ pub enum Status {
     Untested,
     /// Tried, and it doesn't work.
     Broken,
+    /// The model doesn't have it, e.g. noise control on a wired Quantum 400.
+    Absent,
 }
 
 impl Status {
@@ -117,6 +119,7 @@ impl Status {
             Status::Caveat => "caveat",
             Status::Untested => "untested",
             Status::Broken => "broken",
+            Status::Absent => "absent",
         }
     }
 
@@ -127,6 +130,7 @@ impl Status {
             Status::Caveat => "Works, with a catch",
             Status::Untested => "Untested",
             Status::Broken => "Doesn't work",
+            Status::Absent => "Not on this model",
         }
     }
 
@@ -137,6 +141,7 @@ impl Status {
             Status::Caveat => "🟡",
             Status::Untested => "⚪",
             Status::Broken => "❌",
+            Status::Absent => "➖",
         }
     }
 }
@@ -319,6 +324,29 @@ const QUANTUM_800: Features = Features {
     eq: Support::UNTESTED,
 };
 
+/// From realtoxicmaik's report on issue #4. Before 0.4.8 the app waited for
+/// a wireless link the 400 doesn't have, so nothing could be changed on it.
+const QUANTUM_400: Features = Features {
+    reads: Support::from(
+        Status::Reported,
+        "Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link.",
+        "issue #4",
+    ),
+    noise_control: Support::from(Status::Absent, "", "JBL's app has none for it"),
+    sidetone: Support::UNTESTED,
+    lights: Support::UNTESTED,
+    lighting: Support::from(
+        Status::Untested,
+        "JBL's own app drives its logo the same way as the 810's lights.",
+        "",
+    ),
+    eq: Support::from(
+        Status::Caveat,
+        "Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own.",
+        "issue #4",
+    ),
+};
+
 /// Every model, flagships first.
 pub static MODELS: &[Model] = &[
     Model { name: "Quantum 810 Wireless", family: Flagship, ids: &[0x2069], zones: LOGO_RING, features: Some(QUANTUM_810) },
@@ -355,7 +383,7 @@ pub static MODELS: &[Model] = &[
     Model { name: "Quantum 650X Wireless for Xbox", family: MidRange, ids: &[0x213B, 0x213D], zones: NONE, features: HEADSET },
     Model { name: "Quantum 50C", family: Wired, ids: &[0x2112], zones: NONE, features: HEADSET },
     Model { name: "Quantum 300", family: Wired, ids: &[0x1F52], zones: NONE, features: HEADSET },
-    Model { name: "Quantum 400", family: Wired, ids: &[0x1F4C, 0x2039, 0x20EE], zones: LOGO, features: HEADSET },
+    Model { name: "Quantum 400", family: Wired, ids: &[0x1F4C, 0x2039, 0x20EE], zones: LOGO, features: Some(QUANTUM_400) },
     Model { name: "Quantum TWS", family: Earbuds, ids: &[0x208A, 0x209B], zones: NONE, features: None },
     Model { name: "Quantum TWS Air", family: Earbuds, ids: &[0x20BE], zones: NONE, features: None },
     Model { name: "Quantum Stream", family: Microphone, ids: &[0x205F], zones: NONE, features: None },
@@ -392,7 +420,7 @@ pub fn markdown_table() -> String {
         out.push_str(&format!("| {} | {ids} | {} | {cells} |\n", m.name, m.family.label()));
     }
     out.push_str(
-        "\n✅ verified by the project · 🟢 reported working · 🟡 works, with a catch · ⚪ untested · ❌ doesn't work\n",
+        "\n✅ verified by the project · 🟢 reported working · 🟡 works, with a catch · ⚪ untested · ❌ doesn't work · ➖ not on this model\n",
     );
     out
 }

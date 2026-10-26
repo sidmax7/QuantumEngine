@@ -484,12 +484,16 @@ impl<F: Fn()> Worker<F> {
     fn refresh(&self, h: &Headset, connected: bool) -> Result<(), Error> {
         if connected && self.loose.get() {
             // An unverified model need not answer everything; keep what it does.
-            let (battery, anc, sidetone) = (h.battery().ok(), h.anc().ok(), h.sidetone().ok());
+            // A wired one has no battery or noise control to ask about.
+            let wireless = !h.is_wired();
+            let battery = wireless.then(|| h.battery().ok()).flatten();
+            let anc = wireless.then(|| h.anc().ok()).flatten();
+            let sidetone = h.sidetone().ok();
             let (mic_active, dial, lights_on) = (h.mic_active().ok(), h.dial().ok(), h.lights_on().ok());
             let (serial, firmware, device_name) = (h.serial().ok(), h.firmware().ok(), h.device_name().ok());
             let silent: Vec<&str> = [
-                ("battery", battery.is_none()),
-                ("noise control", anc.is_none()),
+                ("battery", wireless && battery.is_none()),
+                ("noise control", wireless && anc.is_none()),
                 ("sidetone", sidetone.is_none()),
                 ("microphone", mic_active.is_none()),
                 ("dial", dial.is_none()),

@@ -40,6 +40,8 @@ PlasmoidItem {
     property string modelName: ""
     property string modelKind: ""
     property bool modelVerified: true
+    // A USB-wired model (Quantum 400): no battery or noise control.
+    property bool modelWired: false
     // Why the last status read failed, shown in place of the controls.
     property string statusError: ""
     property int battery: 0
@@ -67,7 +69,7 @@ PlasmoidItem {
 
     readonly property bool serviceUp: link !== "" && statusError === ""
     readonly property bool ready: link === "ready" && statusError === ""
-    readonly property bool batteryLow: ready && battery <= lowBattery
+    readonly property bool batteryLow: ready && !modelWired && battery <= lowBattery
 
     function statusText() {
         if (statusError !== "") {
@@ -153,7 +155,8 @@ PlasmoidItem {
     toolTipSubText: {
         const eq = eqSupported ? ` · EQ ${eqEnabled ? eqProfile : "off"}` : "";
         const update = updateVersion !== "" ? `\nUpdate ${updateVersion} available` : "";
-        return (ready ? `Battery ${battery}% · ANC ${ancLabel(anc)} · Lights ${lightsOn ? "on" : "off"}${eq}` : statusText()) + update;
+        const power = modelWired ? "Wired" : `Battery ${battery}% · ANC ${ancLabel(anc)}`;
+        return (ready ? `${power} · Lights ${lightsOn ? "on" : "off"}${eq}` : statusText()) + update;
     }
 
     function ancLabel(mode) {
@@ -189,6 +192,7 @@ PlasmoidItem {
                     root.modelName = s.model ? s.model.name : "";
                     root.modelKind = s.model ? s.model.kind : "";
                     root.modelVerified = s.model ? s.model.verified : true;
+                    root.modelWired = s.model ? s.model.family === "wired" : false;
                     root.battery = s.battery_percent;
                     // Don't let a poll that raced a command overwrite the
                     // optimistic value before that command has answered.
@@ -275,7 +279,7 @@ PlasmoidItem {
             }
 
             PlasmaComponents3.Label {
-                visible: root.ready && !compact.vertical
+                visible: root.ready && !root.modelWired && !compact.vertical
                 text: `${root.battery}%`
                 color: root.batteryLow ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
             }
@@ -380,7 +384,7 @@ PlasmoidItem {
 
         // Battery.
         RowLayout {
-            visible: root.ready
+            visible: root.ready && !root.modelWired
             Layout.fillWidth: true
             Layout.column: 0
             Layout.row: root.firstControlRow
@@ -423,7 +427,7 @@ PlasmoidItem {
 
         // Noise control: one of three, always exactly one selected.
         ColumnLayout {
-            visible: root.ready
+            visible: root.ready && !root.modelWired
             Layout.fillWidth: true
             Layout.column: root.wideLayout ? 1 : 0
             Layout.row: root.wideLayout ? root.firstControlRow : root.firstControlRow + 1

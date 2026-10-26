@@ -51,4 +51,9 @@ defineProps<{ feature: Pick<FeatureDto, "status" | "statusLabel"> }>();
   border-color: var(--alert);
   color: var(--alert);
 }
+
+.absent {
+  border-color: transparent;
+  color: var(--ink-3);
+}
 </style>

@@ -1795,7 +1795,7 @@ dependencies = [
 
 [[package]]
 name = "jbl-quantum"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "libc",
 ]
@@ -2792,7 +2792,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "quantumengine"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "jbl-quantum",
  "quantumengine-dbus",
@@ -2810,7 +2810,7 @@ dependencies = [
 
 [[package]]
 name = "quantumengine-dbus"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "serde",
  "zbus",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "quantumenginectl"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "jbl-quantum",
  "libc",
@@ -2828,7 +2828,7 @@ dependencies = [
 
 [[package]]
 name = "quantumengined"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "image",
  "jbl-quantum",

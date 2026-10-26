@@ -118,7 +118,16 @@ impl HeadsetIface {
     }
 
     fn set_lighting(&self, zones: Vec<ZoneLightingArg>) -> fdo::Result<()> {
-        let zones = zones.into_iter().map(parse_zone_lighting).collect::<fdo::Result<Vec<_>>>()?;
+        let mut zones = zones.into_iter().map(parse_zone_lighting).collect::<fdo::Result<Vec<_>>>()?;
+        // Only the zones this model has, as JBL's own app sends them: a
+        // Quantum 400 has a logo and no ring.
+        let model = jbl_quantum::models::lookup_id(&self.shared.lock().unwrap().model_id);
+        if let Some(m) = model.filter(|m| !m.zones.is_empty()) {
+            zones.retain(|z| m.zones.iter().any(|lz| lz.as_str() == z.zone.as_str()));
+            if zones.is_empty() {
+                return Err(fdo::Error::InvalidArgs(format!("the {} has no such light", m.name)));
+            }
+        }
         let (reply, rx) = mpsc::channel();
         self.dispatch(device::Command::Lighting(zones, reply))?;
         recv(rx)
