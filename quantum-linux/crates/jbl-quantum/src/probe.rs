@@ -65,12 +65,6 @@ impl ProbeReport {
         self.readings.iter().filter(|r| r.plausible()).count()
     }
 
-    /// Whether the headset-link read answered: the minimum for treating the
-    /// node as this protocol's control interface.
-    pub fn answers_link(&self) -> bool {
-        self.readings.iter().any(|r| r.report == feature::CONNECTION && r.plausible())
-    }
-
     /// `0ecb:203e`.
     pub fn id(&self) -> String {
         format!("{:04x}:{:04x}", self.vendor_id, self.product_id)
@@ -186,6 +180,21 @@ impl Headset {
     pub fn probe(&self) -> Vec<Reading> {
         probe_reads(self.hid.as_ref())
     }
+
+    /// Whether this is the model's control interface; see
+    /// [`is_control_interface`]. Only reads are made.
+    pub fn speaks_protocol(&self) -> bool {
+        is_control_interface(&self.probe(), self.is_wired())
+    }
+}
+
+/// Whether one interface's readings make it this protocol's control
+/// interface: it answers the headset-link read, or, on a wired model, which
+/// has no link (the Quantum 400 never answers it), the sidetone or lights
+/// read.
+pub fn is_control_interface(readings: &[Reading], wired: bool) -> bool {
+    let answers = |report| readings.iter().any(|r| r.report == report && r.plausible());
+    answers(feature::CONNECTION) || (wired && (answers(feature::SIDETONE_MIRROR) || answers(feature::LIGHTS_MIRROR)))
 }
 
 fn probe_reads(hid: &dyn Transport) -> Vec<Reading> {
@@ -217,6 +226,25 @@ mod tests {
         // The simulator doesn't model every report, but what it answers is plausible.
         assert!(reads.iter().filter(|r| r.answered()).all(|r| r.plausible() || r.report == feature::DEVICE_NAME));
         assert!(reads.iter().any(|r| r.report == feature::CONNECTION && r.plausible()));
+    }
+
+    #[test]
+    fn a_wired_model_is_recognised_without_a_link() {
+        // What a Quantum 400 answers (issue #4): no link, but sidetone and lights.
+        let read = |report, ok: bool| Reading {
+            name: "",
+            report,
+            outcome: if ok {
+                Outcome::Answered { bytes: vec![0], plausible: true, shown: String::new() }
+            } else {
+                Outcome::Failed("did not answer".into())
+            },
+        };
+        let q400 = [read(feature::CONNECTION, false), read(feature::SIDETONE_MIRROR, true), read(feature::LIGHTS_MIRROR, true)];
+        assert!(is_control_interface(&q400, true));
+        assert!(!is_control_interface(&q400, false), "a wireless model still needs its link");
+        let other_interface = [read(feature::CONNECTION, false), read(feature::SIDETONE_MIRROR, false)];
+        assert!(!is_control_interface(&other_interface, true));
     }
 
     #[test]

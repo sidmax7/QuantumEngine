@@ -231,16 +231,15 @@ fn find_unverified() -> Option<Found> {
     })
 }
 
-/// Opens the interface of an unverified model that answers the headset-link
-/// read, which is the least that makes it this protocol's control interface.
-/// Only reads are made. The error says what to tell the user.
+/// Opens the interface of an unverified model that speaks this protocol (see
+/// [`jbl_quantum::probe::is_control_interface`]). Only reads are made. The
+/// error says what to tell the user.
 fn open_best(nodes: &[HidrawNode]) -> Result<Headset, String> {
     let mut denied = None;
     for node in nodes {
         match Headset::open(node) {
             Ok(h) => {
-                let answers = h.probe().iter().any(|r| r.report == jbl_quantum::protocol::feature::CONNECTION && r.plausible());
-                if answers {
+                if h.speaks_protocol() {
                     return Ok(h);
                 }
             }
