@@ -461,6 +461,18 @@ impl Headset {
     /// not.
     pub fn set_lights_confirmed(&self, on: bool, timeout: Duration) -> Result<bool> {
         self.require_connected()?;
+        if self.wired {
+            // Written once, as JBL's app does, and read back: switching a
+            // wired model to the state it is already in may send no event,
+            // and resending until one comes would repeat the write for the
+            // whole timeout.
+            self.set_lights(on)?;
+            std::thread::sleep(LIGHTING_PACKET_GAP);
+            return match self.lights_on()? {
+                now if now == on => Ok(on),
+                _ => Err(Error::Timeout(format!("lights did not switch {}", if on { "on" } else { "off" }))),
+            };
+        }
         let deadline = Instant::now() + timeout;
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             self.set_lights(on)?;
@@ -547,21 +559,35 @@ impl Headset {
         }])
     }
 
-    /// Like [`Headset::set_lighting`] for several zones at once, with a single
-    /// off/on cycle instead of one per zone.
+    /// Like [`Headset::set_lighting`] for several zones at once, switching
+    /// the lights once instead of once per zone.
     pub fn set_lighting_zones(&self, zones: &[ZoneLighting]) -> Result<()> {
         for z in zones {
             validate_lighting(z.brightness, z.speed, &z.palette)?;
         }
+        if self.wired {
+            // JBL's own sequence, which a wired Quantum 400 needs: frames sent
+            // while its lights are off are lost, leaving it dark or dim
+            // (issue #4). So the lights go on first and stay on.
+            self.set_lights_confirmed(true, CONFIRM_TIMEOUT)?;
+            self.send_lighting_packets(zones)?;
+            return self.set_lights_confirmed(true, CONFIRM_TIMEOUT).map(|_| ());
+        }
+        // The 810 takes the frames while its lights are off.
         self.set_lights_confirmed(false, CONFIRM_TIMEOUT)?;
         std::thread::sleep(LIGHTS_SETTLE);
+        self.send_lighting_packets(zones)?;
+        self.set_lights_confirmed(true, CONFIRM_TIMEOUT).map(|_| ())
+    }
+
+    fn send_lighting_packets(&self, zones: &[ZoneLighting]) -> Result<()> {
         for z in zones {
             for packet in lighting_packets(z) {
                 self.hid.set_feature(&packet)?;
                 std::thread::sleep(LIGHTING_PACKET_GAP);
             }
         }
-        self.set_lights_confirmed(true, CONFIRM_TIMEOUT).map(|_| ())
+        Ok(())
     }
 
     /// Block until the device pushes an event.
@@ -902,6 +928,54 @@ mod tests {
         // The washed-out reds: GTK's red barely lights green and blue.
         assert_eq!([0xef, 0x29, 0x29].map(|c| led_drive(c, 100)), [220, 6, 6]);
         assert_eq!((led_drive(0, 100), led_drive(255, 100)), (0, 255));
+    }
+
+    /// The simulator, noting which report each write went to.
+    struct Recorder {
+        inner: sim::SimTransport,
+        writes: std::sync::Arc<Mutex<Vec<(u8, u8)>>>,
+    }
+
+    impl Transport for Recorder {
+        fn get_feature(&self, report_id: u8, len: usize) -> std::io::Result<Vec<u8>> {
+            self.inner.get_feature(report_id, len)
+        }
+        fn get_feature_debug(&self, report_id: u8, len: usize) -> std::io::Result<(i32, Vec<u8>)> {
+            self.inner.get_feature_debug(report_id, len)
+        }
+        fn set_feature(&self, payload: &[u8]) -> std::io::Result<()> {
+            self.writes.lock().unwrap().push((payload[0], payload.get(1).copied().unwrap_or(0)));
+            self.inner.set_feature(payload)
+        }
+        fn read_report(&self) -> std::io::Result<Vec<u8>> {
+            self.inner.read_report()
+        }
+        fn read_report_timeout(&self, timeout: Duration) -> std::io::Result<Option<Vec<u8>>> {
+            self.inner.read_report_timeout(timeout)
+        }
+    }
+
+    #[test]
+    fn a_wired_model_gets_its_frames_with_the_lights_on() {
+        let writes = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let h = Headset {
+            hid: Box::new(Recorder { inner: sim::SimTransport::new(), writes: writes.clone() }),
+            pending: Mutex::new(VecDeque::new()),
+            simulated: true,
+            wired: true,
+        };
+        h.set_lighting(Zone::Logo, 100, 50, &[Colour::new(255, 0, 0)], Effect::BREATHING).unwrap();
+        let w = writes.lock().unwrap();
+        // As JBL's app does it, each written once: lights on, the animation
+        // and its frame, on again.
+        let lights = [feature::LIGHTS, feature::LIGHT_CONFIG, feature::LIGHT_COLOUR, feature::LIGHTS];
+        assert_eq!(w.iter().map(|(r, _)| *r).collect::<Vec<_>>(), lights, "{w:?}");
+        assert!(!w.contains(&(feature::LIGHTS, 0)), "never switched off: {w:?}");
+        drop(w);
+        // The lights switch on its own is written once too, and read back.
+        writes.lock().unwrap().clear();
+        assert!(!h.set_lights_confirmed(false, CONFIRM_TIMEOUT).unwrap());
+        assert_eq!(*writes.lock().unwrap(), [(feature::LIGHTS, 0)]);
     }
 
     #[test]

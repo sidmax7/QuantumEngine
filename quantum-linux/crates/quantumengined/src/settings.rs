@@ -19,6 +19,36 @@ pub struct Settings {
     pub updates: UpdateSettings,
     /// What the user chose for each unverified model, by `vendor:product`.
     pub unverified: BTreeMap<String, UnverifiedChoice>,
+    /// The lighting last applied to each wired model, by `vendor:product`.
+    /// A wired Quantum 400 doesn't keep its animation when unplugged, so it
+    /// is sent again whenever the model connects, as JBL's app does.
+    pub lighting: BTreeMap<String, SavedLighting>,
+}
+
+/// One model's entry in [`Settings::lighting`].
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SavedLighting {
+    /// Whether the user left the lights on.
+    pub on: bool,
+    pub zones: Vec<SavedZone>,
+}
+
+impl Default for SavedLighting {
+    fn default() -> Self {
+        Self { on: true, zones: Vec::new() }
+    }
+}
+
+/// One zone of a [`SavedLighting`].
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SavedZone {
+    /// `logo` or `ring`.
+    pub zone: String,
+    pub brightness: u8,
+    pub speed: u8,
+    pub colours: Vec<[u8; 3]>,
+    pub effect: u8,
 }
 
 /// Opt-in for one unverified model. Everything is off until the user turns it on.

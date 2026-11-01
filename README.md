@@ -65,7 +65,7 @@ Auto-off timer and hardware volume aren't supported over the dongle.
 | Quantum 650X Wireless for Xbox | `0ecb:213b` `0ecb:213d` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Quantum 50C | `0ecb:2112` | Wired | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Quantum 300 | `0ecb:1f52` | Wired | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
-| Quantum 400 | `0ecb:1f4c` `0ecb:2039` `0ecb:20ee` | Wired | 🟢 Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link. (issue #4) | ➖ (JBL's app has none for it) | ⚪ | ⚪ | ⚪ JBL's own app drives its logo the same way as the 810's lights. | 🟡 Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own. (issue #4) |
+| Quantum 400 | `0ecb:1f4c` `0ecb:2039` `0ecb:20ee` | Wired | 🟢 Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link. (issue #4) | ➖ (JBL's app has none for it) | 🟢 (issue #4) | ⚪ Changed in 0.4.10 after Apply left the logo dark; not tried since. | ⚪ Changed in 0.4.10 after Apply left the logo dark; not tried since. | 🟡 Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own. (issue #4) |
 | Quantum TWS | `0ecb:208a` `0ecb:209b` | Earbuds | not a headset | — | — | — | — | — |
 | Quantum TWS Air | `0ecb:20be` | Earbuds | not a headset | — | — | — | — | — |
 | Quantum Stream | `0ecb:205f` | Microphone | not a headset | — | — | — | — | — |

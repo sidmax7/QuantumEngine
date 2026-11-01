@@ -333,11 +333,17 @@ const QUANTUM_400: Features = Features {
         "issue #4",
     ),
     noise_control: Support::from(Status::Absent, "", "JBL's app has none for it"),
-    sidetone: Support::UNTESTED,
-    lights: Support::UNTESTED,
+    sidetone: Support::from(Status::Reported, "", "issue #4"),
+    // Before 0.4.10 Apply left the logo dark, and a replug showed only the
+    // first colour (issue #4). Now sent and restored the way JBL's app does.
+    lights: Support::from(
+        Status::Untested,
+        "Changed in 0.4.10 after Apply left the logo dark; not tried since.",
+        "",
+    ),
     lighting: Support::from(
         Status::Untested,
-        "JBL's own app drives its logo the same way as the 810's lights.",
+        "Changed in 0.4.10 after Apply left the logo dark; not tried since.",
         "",
     ),
     eq: Support::from(

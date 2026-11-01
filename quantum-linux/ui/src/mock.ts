@@ -97,7 +97,9 @@ const Q400: ModelDto = {
   features: features({
     reads: ["reported", "Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link.", "issue #4"],
     anc: ["absent", "", "JBL's app has none for it"],
-    lighting: ["untested", "JBL's own app drives its logo the same way as the 810's lights."],
+    sidetone: ["reported", "", "issue #4"],
+    lights: ["untested", "Changed in 0.4.10 after Apply left the logo dark; not tried since."],
+    lighting: ["untested", "Changed in 0.4.10 after Apply left the logo dark; not tried since."],
     eq: ["caveat", "Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own.", "issue #4"],
   }),
 };
