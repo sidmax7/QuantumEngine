@@ -45,6 +45,7 @@ export const api = {
   endEqPreview: () => unwrap(commands.endEqPreview()),
   importEqProfile: () => unwrap(commands.importEqProfile()),
   setSurround: (on: boolean) => unwrap(commands.setSurroundEnabled(on)),
+  setVolume: (percent: number) => unwrap(commands.setVolume(percent)),
   probeUnverified: () => unwrap(commands.probeUnverified()),
   setUnverified: (inUse: boolean, allowed: string[]) => unwrap(commands.setUnverified(inUse, allowed)),
   grantUnverifiedAccess: () => unwrap(commands.grantUnverifiedAccess()),

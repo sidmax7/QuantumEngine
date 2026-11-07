@@ -12,11 +12,13 @@ mod dbus_service;
 mod device;
 mod eq;
 mod notifier;
+mod output;
 mod pwgraph;
 mod settings;
 mod surround;
 mod tray;
 mod update;
+mod volume;
 
 use std::process::ExitCode;
 
@@ -50,14 +52,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let eq = eq::spawn(notifier.clone());
     let surround = surround::spawn(notifier.clone(), eq.clone());
     let updater = update::spawn(notifier.clone());
+    let volume = volume::spawn(notifier.clone());
 
     let dbus_refresh = dbus_service::serve(
         &connection,
         shared.clone(),
         commands.clone(),
-        eq.clone(),
-        surround.clone(),
-        updater.clone(),
+        dbus_service::Workers { eq: eq.clone(), surround: surround.clone(), updater: updater.clone(), volume },
         notifier.clone(),
     )?;
     // The icon is a convenience; the headset, EQ and updates must keep

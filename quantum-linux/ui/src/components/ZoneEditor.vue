@@ -271,45 +271,6 @@ select:hover {
   border-color: var(--ink-3);
 }
 
-.range {
-  width: 100%;
-  height: 20px;
-  margin: 0;
-  background: transparent;
-  appearance: none;
-  cursor: pointer;
-}
-
-.range::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 3px;
-  background: linear-gradient(to right, var(--ink) var(--fill), var(--line-strong) var(--fill));
-}
-
-.range::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  margin-top: -6.5px;
-  border-radius: 50%;
-  background: var(--ink);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
-  appearance: none;
-}
-
-.range::-moz-range-track {
-  height: 3px;
-  border-radius: 3px;
-  background: linear-gradient(to right, var(--ink) var(--fill), var(--line-strong) var(--fill));
-}
-
-.range::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--ink);
-}
-
 .control {
   display: flex;
   flex-direction: column;
@@ -319,19 +280,5 @@ select:hover {
 .note {
   font-size: 12px;
   color: var(--ink-3);
-}
-
-.range:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.range:focus-visible {
-  outline: none;
-}
-
-.range:focus-visible::-webkit-slider-thumb {
-  outline: 2px solid var(--violet);
-  outline-offset: 2px;
 }
 </style>

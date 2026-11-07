@@ -566,12 +566,15 @@ impl Headset {
             validate_lighting(z.brightness, z.speed, &z.palette)?;
         }
         if self.wired {
-            // JBL's own sequence, which a wired Quantum 400 needs: frames sent
-            // while its lights are off are lost, leaving it dark or dim
-            // (issue #4). So the lights go on first and stay on.
-            self.set_lights_confirmed(true, CONFIRM_TIMEOUT)?;
-            self.send_lighting_packets(zones)?;
-            return self.set_lights_confirmed(true, CONFIRM_TIMEOUT).map(|_| ());
+            // A wired Quantum 400 (issue #4) is sent only what it needs, once:
+            // the lights on if they are off, then the frames. Switching its
+            // lights off and on around them, as the 810 is, left it dark or
+            // showing a frozen first colour until it was replugged, while the
+            // frames alone, as a plain script sends them, showed live.
+            if !self.lights_on()? {
+                self.set_lights_confirmed(true, CONFIRM_TIMEOUT)?;
+            }
+            return self.send_lighting_packets(zones);
         }
         // The 810 takes the frames while its lights are off.
         self.set_lights_confirmed(false, CONFIRM_TIMEOUT)?;
@@ -956,7 +959,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wired_model_gets_its_frames_with_the_lights_on() {
+    fn a_wired_model_gets_only_the_frames_it_needs() {
         let writes = std::sync::Arc::new(Mutex::new(Vec::new()));
         let h = Headset {
             hid: Box::new(Recorder { inner: sim::SimTransport::new(), writes: writes.clone() }),
@@ -964,14 +967,23 @@ mod tests {
             simulated: true,
             wired: true,
         };
+        let reports = |w: &Mutex<Vec<(u8, u8)>>| w.lock().unwrap().iter().map(|(r, _)| *r).collect::<Vec<_>>();
+        h.set_lights_confirmed(true, CONFIRM_TIMEOUT).unwrap();
+        writes.lock().unwrap().clear();
         h.set_lighting(Zone::Logo, 100, 50, &[Colour::new(255, 0, 0)], Effect::BREATHING).unwrap();
-        let w = writes.lock().unwrap();
-        // As JBL's app does it, each written once: lights on, the animation
-        // and its frame, on again.
-        let lights = [feature::LIGHTS, feature::LIGHT_CONFIG, feature::LIGHT_COLOUR, feature::LIGHTS];
-        assert_eq!(w.iter().map(|(r, _)| *r).collect::<Vec<_>>(), lights, "{w:?}");
-        assert!(!w.contains(&(feature::LIGHTS, 0)), "never switched off: {w:?}");
-        drop(w);
+        // Lights already on: just the animation and its frame, never switched.
+        assert_eq!(reports(&writes), [feature::LIGHT_CONFIG, feature::LIGHT_COLOUR], "{:?}", writes.lock().unwrap());
+        // Lights off: switched on once first, and not touched afterwards.
+        h.set_lights_confirmed(false, CONFIRM_TIMEOUT).unwrap();
+        writes.lock().unwrap().clear();
+        h.set_lighting(Zone::Logo, 100, 50, &[Colour::new(255, 0, 0)], Effect::BREATHING).unwrap();
+        assert_eq!(
+            reports(&writes),
+            [feature::LIGHTS, feature::LIGHT_CONFIG, feature::LIGHT_COLOUR],
+            "{:?}",
+            writes.lock().unwrap()
+        );
+        assert_eq!(writes.lock().unwrap()[0], (feature::LIGHTS, 1));
         // The lights switch on its own is written once too, and read back.
         writes.lock().unwrap().clear();
         assert!(!h.set_lights_confirmed(false, CONFIRM_TIMEOUT).unwrap());

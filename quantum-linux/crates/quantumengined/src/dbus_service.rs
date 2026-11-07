@@ -11,6 +11,7 @@
 use crate::device::{self, Link, Shared};
 use crate::eq::{self, profiles::Correction};
 use crate::surround;
+use crate::volume;
 use crate::update;
 use jbl_quantum::{Anc, Colour, Effect, Sidetone, Zone, ZoneLighting, MAX_SLOTS};
 use quantumengine_dbus::{EqBand, ZoneLightingArg};
@@ -18,12 +19,21 @@ use std::sync::mpsc::{self, Sender};
 use zbus::fdo;
 use zbus::interface;
 
+/// The workers whose state the interface shows and whose commands it sends.
+pub struct Workers {
+    pub eq: eq::Handle,
+    pub surround: surround::Handle,
+    pub updater: update::Handle,
+    pub volume: volume::Handle,
+}
+
 pub struct HeadsetIface {
     shared: Shared,
     commands: Sender<device::Command>,
     eq: eq::Handle,
     surround: surround::Handle,
     updater: update::Handle,
+    volume: volume::Handle,
     notifier: crate::notifier::Notifier,
 }
 
@@ -230,7 +240,11 @@ impl HeadsetIface {
 
     #[zbus(property)]
     fn eq_correction(&self) -> String {
-        self.eq.state().correction.as_str().to_string()
+        // A model with no headset correction of its own is left flat, whatever
+        // was chosen; with no model known yet, the choice stands.
+        let model = jbl_quantum::models::lookup_id(&self.shared.lock().unwrap().model_id);
+        let chosen = self.eq.state().correction;
+        chosen.in_use(model).as_str().to_string()
     }
 
     #[zbus(property)]
@@ -307,6 +321,20 @@ impl HeadsetIface {
     #[zbus(property)]
     fn surround_status(&self) -> String {
         self.surround.state().status
+    }
+
+    #[zbus(property)]
+    fn volume(&self) -> u32 {
+        self.volume.percent().unwrap_or(0)
+    }
+
+    #[zbus(property)]
+    fn volume_available(&self) -> bool {
+        self.volume.percent().is_some()
+    }
+
+    fn set_volume(&self, percent: u32) -> fdo::Result<u32> {
+        self.volume.set(percent).map_err(fdo::Error::Failed)
     }
 
     fn set_surround_enabled(&self, enabled: bool) -> fdo::Result<bool> {
@@ -514,14 +542,13 @@ pub fn serve(
     connection: &zbus::blocking::Connection,
     shared: Shared,
     commands: Sender<device::Command>,
-    eq: eq::Handle,
-    surround: surround::Handle,
-    updater: update::Handle,
+    workers: Workers,
     notifier: crate::notifier::Notifier,
 ) -> zbus::Result<impl Fn() + Send + Sync + use<>> {
+    let Workers { eq, surround, updater, volume } = workers;
     connection
         .object_server()
-        .at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands, eq, surround, updater, notifier })?;
+        .at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands, eq, surround, updater, volume, notifier })?;
 
     let iface_ref = connection
         .object_server()
@@ -561,6 +588,8 @@ pub fn serve(
             zbus::block_on(iface.eq_status_changed(emitter)),
             zbus::block_on(iface.surround_enabled_changed(emitter)),
             zbus::block_on(iface.surround_status_changed(emitter)),
+            zbus::block_on(iface.volume_changed(emitter)),
+            zbus::block_on(iface.volume_available_changed(emitter)),
             zbus::block_on(iface.update_version_changed(emitter)),
             zbus::block_on(iface.update_url_changed(emitter)),
             zbus::block_on(iface.update_can_install_changed(emitter)),

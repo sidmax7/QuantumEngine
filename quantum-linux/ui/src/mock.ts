@@ -70,6 +70,7 @@ const Q810: ModelDto = {
   kind: "headset",
   verified: true,
   zones: ["logo", "ring"],
+  eqTuning: true,
   features: features(Object.fromEntries(FEATURES.map(([id]) => [id, ["verified", "", "tested by the project"]]))),
 };
 const Q800: ModelDto = {
@@ -79,6 +80,7 @@ const Q800: ModelDto = {
   kind: "headset",
   verified: false,
   zones: ["logo", "ring"],
+  eqTuning: false,
   features: features({
     reads: ["reported", "Every read answers; it reports no serial number.", "issue #2"],
     anc: ["caveat", "Only with the mic boom raised; with it down the headset plays an error tone.", "issue #2"],
@@ -94,13 +96,14 @@ const Q400: ModelDto = {
   kind: "headset",
   verified: false,
   zones: ["logo"],
+  eqTuning: false,
   features: features({
     reads: ["reported", "Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link.", "issue #4"],
     anc: ["absent", "", "JBL's app has none for it"],
     sidetone: ["reported", "", "issue #4"],
-    lights: ["untested", "Changed in 0.4.10 after Apply left the logo dark; not tried since."],
-    lighting: ["untested", "Changed in 0.4.10 after Apply left the logo dark; not tried since."],
-    eq: ["caveat", "Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own.", "issue #4"],
+    lights: ["untested", "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since."],
+    lighting: ["untested", "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since."],
+    eq: ["reported", "Worked once QuantumEngine was chosen as the output by hand. Since 0.5.0 it attaches on its own, with no 810 tuning; not tried since.", "issue #4"],
   }),
 };
 const STREAM: ModelDto = {
@@ -110,6 +113,7 @@ const STREAM: ModelDto = {
   kind: "microphone",
   verified: false,
   zones: [],
+  eqTuning: false,
   features: [],
 };
 
@@ -159,6 +163,7 @@ function scenarioState(scenario: string): StateDto {
             previewing: false,
           },
     surround: { enabled: false, status: "" },
+    volume: { available: ready || scenario === "update", percent: 85 },
     unverified:
       scenario === "unverifiedMic"
         ? { id: "0ecb:205f", name: "JBL Quantum Stream", access: "", inUse: false, allowed: [], model: STREAM }
@@ -266,6 +271,9 @@ export function installMock(scenario: string) {
         case "set_eq_correction":
           await change((s) => (s.eq.correction = a.correction as string), 200);
           return a.correction;
+        case "set_volume":
+          await change((s) => (s.volume.percent = a.percent as number), 120);
+          return a.percent;
         case "set_surround_enabled":
           await change((s) => (s.surround.enabled = a.enabled as boolean), 500);
           return a.enabled;

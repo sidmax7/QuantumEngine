@@ -287,6 +287,21 @@ pub trait Headset {
 
     fn set_surround_enabled(&self, enabled: bool) -> zbus::Result<bool>;
 
+    // The headset output's volume: the same one the desktop's slider moves,
+    // up to 150%, where the part above 100% is a boost that can distort.
+
+    /// The volume in percent, 0 to 150. Only meaningful while
+    /// `volume_available`.
+    #[zbus(property)]
+    fn volume(&self) -> zbus::Result<u32>;
+
+    /// Whether a headset output was found to take the volume of.
+    #[zbus(property)]
+    fn volume_available(&self) -> zbus::Result<bool>;
+
+    /// Sets the volume (0 to 150) and returns what it reads back as.
+    fn set_volume(&self, percent: u32) -> zbus::Result<u32>;
+
     // Updates from GitHub releases.
 
     /// The running service's version, e.g. `0.3.0`.

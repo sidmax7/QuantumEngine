@@ -268,6 +268,16 @@ impl Model {
         self.features.is_some_and(|f| Feature::ALL.iter().all(|&x| f.get(x).status == Status::Verified))
     }
 
+    /// Whether the EQ has this headset's own correction to put under a sound
+    /// profile. Only the Quantum 810's is built in. JBL's own files give the
+    /// Quantum 400 and 800 none in stereo (every one of their stereo filters
+    /// is 0 dB), and a surround curve for each that is not built in yet (the
+    /// 400's differs between its ears), so they are left flat rather than
+    /// shaped for another headset.
+    pub fn has_eq_tuning(&self) -> bool {
+        self.ids.contains(&crate::PRODUCT_ID)
+    }
+
     /// The model name with JBL's prefix, e.g. `JBL Quantum 800`.
     pub fn full_name(&self) -> String {
         format!("JBL {}", self.name)
@@ -334,21 +344,22 @@ const QUANTUM_400: Features = Features {
     ),
     noise_control: Support::from(Status::Absent, "", "JBL's app has none for it"),
     sidetone: Support::from(Status::Reported, "", "issue #4"),
-    // Before 0.4.10 Apply left the logo dark, and a replug showed only the
-    // first colour (issue #4). Now sent and restored the way JBL's app does.
+    // Apply left the logo dark, or frozen on its first colour until a replug
+    // (issue #4). Since 0.5.0 it is sent only the frames, as a plain script
+    // does, and the lights are left alone while they are on.
     lights: Support::from(
         Status::Untested,
-        "Changed in 0.4.10 after Apply left the logo dark; not tried since.",
+        "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since.",
         "",
     ),
     lighting: Support::from(
         Status::Untested,
-        "Changed in 0.4.10 after Apply left the logo dark; not tried since.",
+        "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since.",
         "",
     ),
     eq: Support::from(
-        Status::Caveat,
-        "Choose QuantumEngine as the sound output yourself; it only attaches to the 810 on its own.",
+        Status::Reported,
+        "Worked once QuantumEngine was chosen as the output by hand. Since 0.5.0 it attaches on its own, with no 810 tuning; not tried since.",
         "issue #4",
     ),
 };
@@ -478,6 +489,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn only_the_810_has_headset_tuning_built_in() {
+        let tuned: Vec<_> = MODELS.iter().filter(|m| m.has_eq_tuning()).map(|m| m.name).collect();
+        assert_eq!(tuned, ["Quantum 810 Wireless"]);
+        // JBL's files give the 400 and 800 no stereo correction at all.
+        assert!(!lookup(VENDOR, 0x20EE).unwrap().has_eq_tuning());
+        assert!(!lookup(VENDOR, 0x203E).unwrap().has_eq_tuning());
     }
 
     #[test]

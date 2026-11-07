@@ -45,6 +45,10 @@ PlasmoidItem {
     // Why the last status read failed, shown in place of the controls.
     property string statusError: ""
     property int battery: 0
+    // The headset output's volume in percent, or -1 while there is none (an
+    // older service reports no volume). Past 100 is a boost that can distort.
+    property int volumePercent: -1
+    property bool volumeDragging: false
     property string anc: "off"
     property bool lightsOn: false
 
@@ -116,6 +120,14 @@ PlasmoidItem {
         }
         lightsOn = on;
         runSet(`quantumenginectl lights ${on ? "on" : "off"}`);
+    }
+
+    function setVolume(percent) {
+        if (busy) {
+            return;
+        }
+        volumePercent = percent;
+        runSet(`quantumenginectl volume ${percent}`);
     }
 
     function setEqEnabled(on) {
@@ -199,6 +211,9 @@ PlasmoidItem {
                     if (!root.busy) {
                         root.anc = s.anc;
                         root.lightsOn = s.lights_on;
+                        if (!root.volumeDragging) {
+                            root.volumePercent = s.volume ? s.volume.percent : -1;
+                        }
                     }
                     root.eqSupported = s.eq !== undefined;
                     if (root.eqSupported) {
@@ -537,6 +552,58 @@ PlasmoidItem {
                 text: root.statusText()
                 wrapMode: Text.WordWrap
                 opacity: 0.7
+            }
+        }
+
+        // Volume: the headset output's, with a boost past 100%.
+        ColumnLayout {
+            visible: root.serviceUp && root.volumePercent >= 0
+            Layout.fillWidth: true
+            Layout.column: 0
+            Layout.row: root.firstControlRow + (root.wideLayout ? 1 : 4)
+            Layout.leftMargin: Kirigami.Units.smallSpacing
+            Layout.rightMargin: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+
+                Kirigami.Icon {
+                    source: "audio-volume-high-symbolic"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+                }
+
+                PlasmaComponents3.Label {
+                    Layout.fillWidth: true
+                    text: "Volume"
+                    font.bold: true
+                }
+
+                PlasmaComponents3.Label {
+                    text: root.volumePercent > 100 ? `${root.volumePercent}% boost` : `${root.volumePercent}%`
+                    color: root.volumePercent > 100 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
+                }
+            }
+
+            PlasmaComponents3.Slider {
+                Layout.fillWidth: true
+                from: 0
+                to: 150
+                stepSize: 1
+                value: root.volumePercent
+                enabled: !root.busy
+                onMoved: root.volumePercent = Math.round(value)
+                onPressedChanged: {
+                    root.volumeDragging = pressed;
+                    if (!pressed) {
+                        root.setVolume(Math.round(value));
+                        // Dragging replaced the binding with a fixed value;
+                        // restore it so later reads keep the slider in sync.
+                        value = Qt.binding(() => root.volumePercent);
+                    }
+                }
             }
         }
 

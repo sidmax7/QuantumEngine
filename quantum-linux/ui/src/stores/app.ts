@@ -35,6 +35,7 @@ const EMPTY_STATE: StateDto = {
   },
   eq: { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false },
   surround: { enabled: false, status: "" },
+  volume: { available: false, percent: 0 },
   update: { serviceVersion: "", available: "", canInstall: false, status: "", busy: false, checks: true },
   unverified: { id: "", name: "", access: "", inUse: false, allowed: [], model: null },
   model: null,
@@ -102,6 +103,8 @@ export const useApp = defineStore("app", () => {
   const headset = computed(() => state.value.headset);
   const serviceUp = computed(() => state.value.service === "up");
   const ready = computed(() => serviceUp.value && headset.value.link === "ready");
+  /** Whether the EQ has JBL's own correction for this model; only the 810's is built in. */
+  const tuned = computed(() => (state.value.model ?? state.value.unverified.model)?.eqTuning ?? true);
   /** A USB-wired model, such as the Quantum 400: no battery or noise control. */
   const wired = computed(() => (state.value.model ?? state.value.unverified.model)?.family === "Wired");
   /** Headset controls take one change at a time. */
@@ -234,6 +237,14 @@ export const useApp = defineStore("app", () => {
   const setUnverified = (inUse: boolean, allowed: string[]) => run("unverified:set", () => api.setUnverified(inUse, allowed));
   const grantAccess = () => run("unverified:grant", () => api.grantUnverifiedAccess());
   const setSurround = (on: boolean) => run(`surround:${on}`, () => api.setSurround(on));
+  /** The volume follows the slider live, so it neither takes the one-command lock nor shows a spinner. */
+  async function setVolume(percent: number) {
+    try {
+      await api.setVolume(percent);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  }
   const checkForUpdates = () => run("update:check", () => api.checkForUpdates());
   const installUpdate = () => run("update:install", () => api.installUpdate());
   const restartService = () => run("service:restart", () => api.restartService());
@@ -265,6 +276,7 @@ export const useApp = defineStore("app", () => {
     serviceUp,
     ready,
     wired,
+    tuned,
     locked,
     lightingDirty,
     start,
@@ -287,6 +299,7 @@ export const useApp = defineStore("app", () => {
     setEqProfile,
     setEqCorrection,
     setSurround,
+    setVolume,
     probeText,
     probeUnverified,
     setUnverified,

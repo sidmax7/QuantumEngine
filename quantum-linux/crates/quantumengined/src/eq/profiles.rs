@@ -76,6 +76,14 @@ pub enum Correction {
 impl Correction {
     pub const ALL: [Correction; 3] = [Correction::Off, Correction::Stereo, Correction::Surround];
 
+    /// What to apply for `model`: this one if the model has JBL's tuning, or
+    /// if none is known yet (the 810's applies, as it always did), and nothing
+    /// otherwise, so a headset is never shaped for another one.
+    pub fn in_use(self, model: Option<&jbl_quantum::models::Model>) -> Self {
+        if model.is_none_or(|m| m.has_eq_tuning()) { self } else { Correction::Off }
+    }
+
+
     pub fn as_str(self) -> &'static str {
         match self {
             Correction::Off => "off",
@@ -127,6 +135,17 @@ mod tests {
         assert_eq!(find("cs2").unwrap().name, "CS2");
         assert_eq!(find("Escape From Tarkov").unwrap().name, "Escape from Tarkov");
         assert!(find("nope").is_none());
+    }
+
+    #[test]
+    fn only_a_model_with_tuning_gets_the_chosen_correction() {
+        use jbl_quantum::models::lookup;
+        let (q810, q400) = (lookup(0x0ecb, 0x2069), lookup(0x0ecb, 0x20ee));
+        for c in Correction::ALL {
+            assert_eq!(c.in_use(q810), c);
+            assert_eq!(c.in_use(None), c, "no model known yet keeps the choice");
+            assert_eq!(c.in_use(q400), Correction::Off);
+        }
     }
 
     #[test]

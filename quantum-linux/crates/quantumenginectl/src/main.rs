@@ -41,6 +41,8 @@ COMMANDS:
     eq bands [profile]          list a profile's bands (default: current)
     eq delete <profile>         delete one of your own profiles
     surround [on|off]           show or set virtual 7.1 surround
+    volume [0-150]              show or set the headset's output volume in
+                                percent; above 100 is a boost that can distort
     unverified                  show a headset model this isn't verified on
     unverified probe            read-only report of what it answers to, to
                                 paste into an issue (writes nothing)
@@ -195,6 +197,7 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
         "watch" => cmd_watch(&proxy, json)?,
         "eq" => cmd_eq(&proxy, params, json)?,
         "surround" => cmd_surround(&proxy, params, json)?,
+        "volume" => cmd_volume(&proxy, params, json)?,
         "unverified" => cmd_unverified(&proxy, params, json)?,
         "update" => cmd_update(&proxy, params, json)?,
         other => return Err(format!("unknown command '{other}' (try --help)")),
@@ -241,12 +244,13 @@ fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
         println!(
             "{{\"link\":\"{link}\",\"battery_percent\":{battery},\"anc\":\"{anc}\",\"sidetone\":\"{sidetone}\",\
              \"mic_active\":{mic_active},\"dial\":{dial},\"lights_on\":{lights_on},\"device_name\":\"{}\",\"serial\":\"{}\",\"firmware\":[{}],\
-             \"eq\":{},\"surround\":{},\"update\":{},\"model\":{}}}",
+             \"eq\":{},\"surround\":{},\"volume\":{},\"update\":{},\"model\":{}}}",
             escape(&device_name),
             escape(&serial),
             fw.join(","),
             eq.json(),
             surround.json(),
+            volume_json(proxy),
             update.json(),
             model_json(&model_id, model)
         );
@@ -273,6 +277,9 @@ fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
         }
         println!("eq:        {}", eq.summary());
         println!("surround:  {}", surround.summary());
+        if let (Ok(true), Ok(percent)) = (proxy.volume_available(), proxy.volume()) {
+            println!("volume:    {percent}%");
+        }
         if !update.available.is_empty() {
             println!("update:    {} available (you have {})", update.available, update.version);
         }
@@ -363,6 +370,29 @@ fn cmd_surround(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> 
     Ok(())
 }
 
+/// The headset output's volume. An older service has no volume to show.
+fn cmd_volume(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result<(), String> {
+    if let Some(value) = params.first() {
+        let percent: u32 = value
+            .trim_end_matches('%')
+            .parse()
+            .ok()
+            .filter(|p| *p <= 150)
+            .ok_or_else(|| format!("volume takes a percentage from 0 to 150, not '{value}'"))?;
+        proxy.set_volume(percent).map_err(dbus_err)?;
+    }
+    if !proxy.volume_available().map_err(dbus_err)? {
+        return Err("there is no headset output to show the volume of".into());
+    }
+    let percent = proxy.volume().map_err(dbus_err)?;
+    if json {
+        println!("{{\"percent\":{percent}}}");
+    } else {
+        println!("volume:    {percent}%{}", if percent > 100 { " (boosted)" } else { "" });
+    }
+    Ok(())
+}
+
 /// An unverified model: show it, check it with reads only, and opt in.
 fn cmd_unverified(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result<(), String> {
     let id = proxy.unverified_device().map_err(dbus_err)?;
@@ -442,6 +472,14 @@ fn cmd_unverified(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -
 }
 
 /// A model as JSON for `status`: `null`, or its name, family and whether it's verified.
+/// `null` while there is no headset output (or an older service has none).
+fn volume_json(proxy: &HeadsetProxyBlocking) -> String {
+    match (proxy.volume_available(), proxy.volume()) {
+        (Ok(true), Ok(percent)) => format!("{{\"percent\":{percent}}}"),
+        _ => "null".into(),
+    }
+}
+
 fn model_json(id: &str, model: Option<&jbl_quantum::models::Model>) -> String {
     match model {
         None => "null".into(),

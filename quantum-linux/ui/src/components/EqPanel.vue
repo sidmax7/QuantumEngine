@@ -126,7 +126,7 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
     </PanelField>
 
     <PanelField
-      v-if="!editing"
+      v-if="!editing && app.tuned"
       title="Headset tuning"
       hint="JBL's own correction for the Quantum 810, under the profile. JBL stereo is a gentle bass cut; JBL surround is the curve it uses with spatial sound."
     >

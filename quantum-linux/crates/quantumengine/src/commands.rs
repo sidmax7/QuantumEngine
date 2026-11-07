@@ -228,6 +228,13 @@ pub async fn set_surround_enabled(link: Shared<'_>, enabled: bool) -> Result<boo
     with_proxy(&link, move |p| p.set_surround_enabled(enabled)).await
 }
 
+/// Sets the headset output's volume (0 to 150) and returns what it reads back as.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_volume(link: Shared<'_>, percent: u32) -> Result<u32> {
+    with_proxy(&link, move |p| p.set_volume(percent)).await
+}
+
 /// The curve of `profile` under `correction`, in dB at each of
 /// `InfoDto::eq_frequencies`.
 #[tauri::command]

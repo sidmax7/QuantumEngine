@@ -28,19 +28,23 @@ pub type Chain = [Coefficients; SLOTS];
 const NODE_NAME: &str = "quantumengine_eq";
 
 /// The sink the EQ sits in front of, as WirePlumber match rules.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
-    pub card: &'static str,
-    pub profile: &'static str,
+    pub card: String,
+    pub profile: String,
 }
 
-/// The Quantum 810's game output. Matching on the card and profile rather
-/// than the node name means it works with any 810 dongle, plugged in or not.
-pub const HEADSET_GAME_OUTPUT: Target = Target { card: "JBL Quantum810 Wireless", profile: "stereo-game-output" };
-
 impl Target {
-    /// Whether a node with properties `props` is this device.
-    pub fn matches(&self, props: &serde_json::Value) -> bool {
-        props["alsa.card_name"] == self.card && props["device.profile.name"] == self.profile
+    /// The Quantum 810's game output, which the EQ waits on when no headset is
+    /// plugged in. Matching on the card and profile rather than the node name
+    /// means it works with any 810 dongle, plugged in or not.
+    pub fn quantum_810() -> Self {
+        Self { card: "JBL Quantum810 Wireless".into(), profile: "stereo-game-output".into() }
+    }
+
+    /// The output of the headset found by [`crate::output`].
+    pub fn of(output: &crate::output::Output) -> Self {
+        Self { card: output.card.clone(), profile: output.profile.clone() }
     }
 }
 
@@ -104,8 +108,8 @@ fn config(node_name: &str, target: &Target, chain: &Chain) -> String {
     let rate = RATE as u32;
     let name = quoted(node_name);
     let output_name = quoted(&format!("{node_name}.output"));
-    let card = quoted(target.card);
-    let profile = quoted(target.profile);
+    let card = quoted(&target.card);
+    let profile = quoted(&target.profile);
     format!(
         r#"# Written by quantumengined; regenerated every time the EQ starts.
 context.properties = {{ log.level = 0 }}
@@ -172,7 +176,7 @@ mod tests {
 
     #[test]
     fn config_chains_every_slot_and_targets_the_game_output() {
-        let conf = config("test_eq", &HEADSET_GAME_OUTPUT, &identity());
+        let conf = config("test_eq", &Target::quantum_810(), &identity());
         assert_eq!(conf.matches("label = bq_raw").count(), SLOTS);
         assert_eq!(conf.matches("output = \"eq_").count(), SLOTS - 1);
         assert!(conf.contains("{ output = \"eq_15:Out\" input = \"eq_16:In\" }"));
@@ -206,7 +210,7 @@ mod live_tests {
     #[test]
     #[ignore = "starts a real PipeWire filter in the current session"]
     fn filter_starts_takes_new_coefficients_and_goes_away() {
-        let nowhere = Target { card: "quantumengine-test-matches-nothing", profile: "none" };
+        let nowhere = Target { card: "quantumengine-test-matches-nothing".into(), profile: "none".into() };
         let name = "quantumengine_eq_test";
         let mut filter = Filter::start_named(name, &nowhere, &[Coefficients::IDENTITY; SLOTS]).unwrap();
         assert!(filter.is_running());

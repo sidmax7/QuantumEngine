@@ -13,7 +13,7 @@
 //! reading the battery or the lights state makes the device send another one.
 
 use crate::settings;
-use jbl_quantum::{Anc, Colour, Effect, Error, Event, Headset, HidrawNode, Sidetone, Zone, ZoneLighting, CONFIRM_TIMEOUT};
+use jbl_quantum::{Anc, Error, Event, Headset, HidrawNode, Sidetone, ZoneLighting, CONFIRM_TIMEOUT};
 use std::cell::{Cell, RefCell};
 use std::io;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -231,29 +231,6 @@ fn find_unverified() -> Option<Found> {
     })
 }
 
-fn saved_zone(z: &ZoneLighting) -> settings::SavedZone {
-    settings::SavedZone {
-        zone: z.zone.as_str().into(),
-        brightness: z.brightness,
-        speed: z.speed,
-        colours: z.palette.iter().map(|c| [c.r, c.g, c.b]).collect(),
-        effect: z.effect.0,
-    }
-}
-
-/// The zone back from settings; `None` if the file was edited into nonsense.
-fn zone_lighting(z: &settings::SavedZone) -> Option<ZoneLighting> {
-    let zone = Zone::ALL.into_iter().find(|zone| zone.as_str() == z.zone)?;
-    let effect = Effect(z.effect);
-    (effect.is_known() && !z.colours.is_empty() && z.colours.len() <= jbl_quantum::MAX_SLOTS).then(|| ZoneLighting {
-        zone,
-        brightness: z.brightness.min(100),
-        speed: z.speed.min(100),
-        palette: z.colours.iter().map(|&[r, g, b]| Colour::new(r, g, b)).collect(),
-        effect,
-    })
-}
-
 /// Opens the interface of an unverified model that speaks this protocol (see
 /// [`jbl_quantum::probe::is_control_interface`]). Only reads are made. The
 /// error says what to tell the user.
@@ -465,9 +442,6 @@ impl<F: Fn()> Worker<F> {
     fn serve_inner(&self, h: &Headset) -> Result<Flow, Error> {
         let mut connected = h.connected()?;
         self.refresh(h, connected)?;
-        if connected && h.is_wired() {
-            self.restore_lighting(h);
-        }
         let mut next_poll = Instant::now() + POLL_EVERY;
         loop {
             loop {
@@ -491,7 +465,7 @@ impl<F: Fn()> Worker<F> {
                 if now != connected {
                     connected = now;
                     self.refresh(h, connected)?;
-                } else if connected {
+                } else if connected && !h.is_wired() {
                     // Sidetone has no event. Reading it has no side effects.
                     match h.sidetone() {
                         Ok(sidetone) => self.update(|s| s.sidetone = Some(sidetone)),
@@ -515,7 +489,10 @@ impl<F: Fn()> Worker<F> {
             let anc = wireless.then(|| h.anc().ok()).flatten();
             let sidetone = h.sidetone().ok();
             let (mic_active, dial, lights_on) = (h.mic_active().ok(), h.dial().ok(), h.lights_on().ok());
-            let (serial, firmware, device_name) = (h.serial().ok(), h.firmware().ok(), h.device_name().ok());
+            // The paired host's name (0x5B) is a wireless link's; a wired
+            // model's report descriptor doesn't declare it at all.
+            let device_name = wireless.then(|| h.device_name().ok()).flatten();
+            let (serial, firmware) = (h.serial().ok(), h.firmware().ok());
             let silent: Vec<&str> = [
                 ("battery", wireless && battery.is_none()),
                 ("noise control", wireless && anc.is_none()),
@@ -617,54 +594,12 @@ impl<F: Fn()> Worker<F> {
             }
             Command::Lights(on, reply) => {
                 self.update(|s| s.pending = Some(Pending::Lights(on)));
-                let result = h.set_lights_confirmed(on, CONFIRM_TIMEOUT);
-                if result.is_ok() && h.is_wired() {
-                    self.remember_lighting(|l| l.on = on);
-                }
-                self.finish(reply, result, |s, on| s.lights_on = Some(on))
+                self.finish(reply, h.set_lights_confirmed(on, CONFIRM_TIMEOUT), |s, on| s.lights_on = Some(on))
             }
             Command::Lighting(zones, reply) => {
                 self.update(|s| s.pending = Some(Pending::Lighting));
-                let result = h.set_lighting_zones(&zones);
-                if result.is_ok() && h.is_wired() {
-                    // Applying switches the lights on.
-                    let zones = zones.iter().map(saved_zone).collect();
-                    self.remember_lighting(|l| *l = settings::SavedLighting { on: true, zones });
-                }
-                self.finish(reply, result, |s, ()| s.lights_on = Some(true))
+                self.finish(reply, h.set_lighting_zones(&zones), |s, ()| s.lights_on = Some(true))
             }
-        }
-    }
-
-    /// Keeps a wired model's lighting, to send again when it reconnects.
-    fn remember_lighting(&self, change: impl FnOnce(&mut settings::SavedLighting)) {
-        let id = self.shared.lock().unwrap().model_id.clone();
-        if let Err(e) = settings::update(|s| change(s.lighting.entry(id).or_default())) {
-            eprintln!("quantumengined: {e}");
-        }
-    }
-
-    /// Sends a wired model the lighting it last had, then switches its
-    /// lights off again if that's how the user left them, as JBL's app does:
-    /// it comes back from a replug showing only its first colour (issue #4).
-    /// Only if the user allowed lights on it.
-    fn restore_lighting(&self, h: &Headset) {
-        if self.denied("lights").is_some() {
-            return;
-        }
-        let id = self.shared.lock().unwrap().model_id.clone();
-        let Some(saved) = settings::load().lighting.remove(&id) else { return };
-        let zones: Vec<ZoneLighting> = saved.zones.iter().filter_map(zone_lighting).collect();
-        let mut result = Ok(());
-        if !zones.is_empty() {
-            result = h.set_lighting_zones(&zones);
-        }
-        if result.is_ok() && !saved.on {
-            result = h.set_lights_confirmed(false, CONFIRM_TIMEOUT).map(|_| ());
-        }
-        match result {
-            Ok(()) => self.update(|s| s.lights_on = Some(saved.on)),
-            Err(e) => self.update(|s| s.error = Some(format!("Couldn't restore the lights: {e}"))),
         }
     }
 
@@ -722,22 +657,6 @@ fn apply_event(s: &mut Snapshot, event: Event) {
 mod tests {
     use super::*;
     use std::sync::mpsc::channel;
-
-    #[test]
-    fn a_wired_models_lighting_survives_the_settings_file() {
-        let z = ZoneLighting {
-            zone: Zone::Logo,
-            brightness: 40,
-            speed: 75,
-            palette: vec![Colour::new(255, 0, 0), Colour::new(0, 0, 255)],
-            effect: Effect::WAVE,
-        };
-        let saved = saved_zone(&z);
-        let json = serde_json::to_string(&saved).unwrap();
-        assert_eq!(zone_lighting(&serde_json::from_str(&json).unwrap()), Some(z));
-        let nonsense = settings::SavedZone { zone: "visor".into(), ..saved };
-        assert_eq!(zone_lighting(&nonsense), None);
-    }
 
     fn worker(commands: Receiver<Command>, shared: Shared, loose: bool) -> Worker<impl Fn()> {
         Worker {

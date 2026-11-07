@@ -15,10 +15,12 @@ pub mod pipewire;
 pub mod profiles;
 
 use crate::notifier::Notifier;
+use crate::output;
 use crate::settings;
 use biquad::{peak_db, response_db, Band, Coefficients};
 use custom::CustomProfile;
-use pipewire::{Chain, Filter, HEADSET_GAME_OUTPUT, RATE, SLOTS};
+use jbl_quantum::models::Model;
+use pipewire::{Chain, Filter, Target, RATE, SLOTS};
 use profiles::{Correction, PROFILES};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -56,6 +58,16 @@ impl State {
     /// punctuation).
     pub fn find(&self, name: &str) -> Option<(String, Vec<Band>)> {
         find(name, &self.custom)
+    }
+}
+
+/// The output the EQ attaches to, and the model it belongs to: the
+/// plugged-in headset's, or else the Quantum 810's output with no model known,
+/// so the EQ is ready for its dongle as it always was.
+fn resolve() -> (Target, Option<&'static Model>) {
+    match output::find() {
+        Ok(Some(o)) => (Target::of(&o), Some(o.model)),
+        _ => (Target::quantum_810(), None),
     }
 }
 
@@ -127,7 +139,15 @@ pub fn spawn(notifier: Notifier) -> Handle {
         status: String::new(),
     }));
     let (commands, rx) = mpsc::channel();
-    let worker = Worker { state: state.clone(), notifier, filter: None, preview: None, preview_at: Instant::now(), retry_at: None };
+    let worker = Worker {
+        state: state.clone(),
+        notifier,
+        filter: None,
+        filter_target: None,
+        preview: None,
+        preview_at: Instant::now(),
+        retry_at: None,
+    };
     std::thread::Builder::new()
         .name("eq".into())
         .spawn(move || worker.run(rx))
@@ -170,6 +190,8 @@ struct Worker {
     state: Arc<Mutex<State>>,
     notifier: Notifier,
     filter: Option<Filter>,
+    /// The output the running filter is attached to.
+    filter_target: Option<Target>,
     /// Unsaved bands being auditioned, if any, and when they last changed.
     preview: Option<Vec<Band>>,
     preview_at: Instant,
@@ -322,12 +344,16 @@ impl Worker {
         if !self.state.lock().unwrap().enabled {
             return;
         }
-        if let Some(f) = &mut self.filter {
-            if f.is_running() {
+        if self.filter.as_mut().is_some_and(Filter::is_running) {
+            // Still running: only a different headset being plugged in
+            // changes what it should be attached to.
+            if Some(&resolve().0) == self.filter_target.as_ref() {
                 return;
             }
-            self.filter = None;
+            self.apply();
+            return;
         }
+        self.filter = None;
         if self.retry_at.is_none_or(|t| Instant::now() >= t) {
             self.apply();
         }
@@ -341,13 +367,17 @@ impl Worker {
                 Some(b) => b.clone(),
                 None => state.find(&state.profile).map(|(_, b)| b).unwrap_or_default(),
             };
-            let chain = chain(state.correction, &bands);
-            if self.filter.as_mut().is_some_and(|f| !f.is_running()) {
+            let (target, model) = resolve();
+            let chain = chain(state.correction.in_use(model), &bands);
+            if self.filter.as_mut().is_some_and(|f| !f.is_running()) || self.filter_target.as_ref() != Some(&target) {
                 self.filter = None;
             }
             let result = match &mut self.filter {
                 Some(f) => f.set(&chain),
-                None => Filter::start(&HEADSET_GAME_OUTPUT, &chain).map(|f| self.filter = Some(f)),
+                None => Filter::start(&target, &chain).map(|f| {
+                    self.filter = Some(f);
+                    self.filter_target = Some(target);
+                }),
             };
             match result {
                 Ok(()) => String::new(),

@@ -25,7 +25,8 @@ the device and every command was checked on real hardware.
 | Microphone live/muted, game/chat dial | ✓ (live) | ✓ |
 | Live event stream | — | ✓ `watch` |
 | Serial, firmware, paired host name | ✓ | ✓ |
-| EQ: JBL's headset tuning, 19 sound profiles, your own and imported ones | ✓ | ✓ |
+| EQ: JBL's headset tuning (810), 19 sound profiles, your own and imported ones | ✓ | ✓ |
+| Volume of the headset's output, up to 150% | ✓ | ✓ `volume` |
 | Virtual 7.1 surround | ✓ | ✓ |
 | Updates from GitHub releases | ✓ | ✓ |
 
@@ -35,9 +36,8 @@ been found yet.
   [virtual surround](#virtual-surround) on the PC instead, as JBL's app does)
 - Auto-off timer
 - Charging state
-- Volume
-
-For volume, use your system mixer.
+- The headset's own hardware volume over the dongle. The [volume](#volume)
+  control sets the PC's volume for the headset's output instead.
 
 **Only the Quantum 810 Wireless is verified.** Other Quantum models may use a
 different protocol, so QuantumEngine never sends them anything until you say so:
@@ -145,7 +145,10 @@ and so does this. Turn it on in the window, the tray menu, the widget or with
 
 - **Headset tuning**: JBL's own correction curve for the Quantum 810. *JBL
   stereo* is the one QuantumENGINE uses with surround off (a gentle bass cut);
-  *JBL surround* is the one it puts under its spatial audio.
+  *JBL surround* is the one it puts under its spatial audio. Other models are
+  left flat: JBL's files give the Quantum 400 and 800 no stereo correction at
+  all, and their surround curves aren't built in yet (the 400's differs
+  between its ears).
 - **Profile**: one of 19 ten-band sound profiles: Flat, Bass Boost,
   Cinematic, FPS, MOBA, RPG, and presets for specific games (CS2, Valorant,
   Apex Legends and more).
@@ -158,9 +161,11 @@ and so does this. Turn it on in the window, the tray menu, the widget or with
   curve from an [AutoEQ](https://github.com/jaakkopasanen/AutoEq) or
   Equalizer APO `ParametricEQ.txt`, or an EasyEffects preset.
 
-It runs as a PipeWire filter in front of the headset's **game** output only;
-chat is left alone. Your default output device doesn't change, and it works
-whether or not the headset is plugged in at the moment. Switching profiles is
+It runs as a PipeWire filter in front of the headset's output: the **game**
+output on the 810, whose chat output is left alone, or the single output of a
+model like the Quantum 400. The headset is found by its USB ID, so the EQ
+follows whichever listed model is plugged in, and waits on the 810's output
+when none is. Your default output device doesn't change. Switching profiles is
 instant, with no gap in the audio. Curves that boost are turned down by just
 enough that they can never clip. It needs PipeWire and WirePlumber 0.5 or
 newer, which current desktops already use.
@@ -171,6 +176,18 @@ use one or the other.
 The curves come from JBL QuantumENGINE's configuration files, as extracted by
 [alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
 tested by [DefSteam](https://github.com/DefSteam). Thank you both.
+
+## Volume
+
+The window's Sound section and the widget have a volume slider for the
+headset's output, and `quantumenginectl volume 80` sets it from a terminal. It
+is the same volume your desktop's own slider and volume keys move, so they
+always agree.
+
+The slider goes up to **150%**. Past 100% is a boost: it makes quiet sound
+louder, but loud passages can distort, and the EQ already turns the whole
+output down a little to keep its own boosts from clipping, so a boost can give
+that back.
 
 ## Virtual surround
 
@@ -200,9 +217,9 @@ code or data:
   colouring goes and only the directional cues remain.
 - Bass below 120 Hz skips all that and goes to both ears, and the LFE channel
   is added to both ears at half level, so the low end stays clean.
-- The EQ's headset tuning switches to JBL surround while surround is on and
-  back to JBL stereo when it's off, as QuantumENGINE does. (A tuning set to
-  off stays off.)
+- On the 810, the EQ's headset tuning switches to JBL surround while surround
+  is on and back to JBL stereo when it's off, as QuantumENGINE does. (A tuning
+  set to off stays off.)
 
 It needs PipeWire's convolver, which comes with `pipewire-audio`, and
 libmysofa. It won't sound exactly like JBL's processing, whose head-model data
@@ -237,6 +254,7 @@ paired to: PC-myhost #1
 serial:    XXXXXX-XXXXXXXXX
 firmware:  0.7.2, 0.8.2, 1.0.2, 0.7.2
 eq:        on, CS2 (headset tuning: stereo)
+volume:    85%
 
 $ quantumenginectl anc talkthru
 talkthru
@@ -246,6 +264,9 @@ on, Bass Boost (headset tuning: stereo)
 
 $ quantumenginectl eq import ~/Downloads/ParametricEQ.txt "My target"
 imported as "My target"
+
+$ quantumenginectl volume 120
+volume:    120% (boosted)
 
 $ quantumenginectl update
 QuantumEngine 0.3.0 is up to date

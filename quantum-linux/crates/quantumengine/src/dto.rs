@@ -28,6 +28,7 @@ pub struct StateDto {
     pub headset: HeadsetDto,
     pub eq: EqDto,
     pub surround: SurroundDto,
+    pub volume: VolumeDto,
     pub update: UpdateDto,
     pub unverified: UnverifiedDto,
     /// The model being served, from QuantumEngine's catalogue, if it's listed.
@@ -67,6 +68,8 @@ pub struct ModelDto {
     pub verified: bool,
     /// What lights up: any of `"logo"`, `"ring"`, `"notch"`.
     pub zones: Vec<String>,
+    /// Whether the EQ has JBL's own headset correction for it.
+    pub eq_tuning: bool,
     /// Empty for anything that isn't a headset.
     pub features: Vec<FeatureDto>,
 }
@@ -117,9 +120,19 @@ impl ModelDto {
             kind: m.kind().as_str().into(),
             verified: m.verified(),
             zones: m.zones.iter().map(|z| z.as_str().into()).collect(),
+            eq_tuning: m.has_eq_tuning(),
             features,
         })
     }
+}
+
+/// The headset output's volume, as the desktop's own slider shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct VolumeDto {
+    /// Whether a headset output was found to take the volume of.
+    pub available: bool,
+    /// 0 to 150. The part above 100 is a boost that can distort.
+    pub percent: u32,
 }
 
 /// Virtual 7.1 surround, rendered on this PC.
@@ -234,6 +247,7 @@ impl Default for StateDto {
                 previewing: false,
             },
             surround: SurroundDto { enabled: false, status: String::new() },
+            volume: VolumeDto { available: false, percent: 0 },
             unverified: UnverifiedDto {
                 id: String::new(),
                 name: String::new(),

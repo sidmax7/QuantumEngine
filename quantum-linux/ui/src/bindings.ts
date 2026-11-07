@@ -50,6 +50,8 @@ export const commands = {
 	importEqProfile: () => typedError<string | null, string>(__TAURI_INVOKE("import_eq_profile")),
 	/**  Virtual 7.1 surround; on also makes it the default output. */
 	setSurroundEnabled: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_surround_enabled", { enabled })),
+	/**  Sets the headset output's volume (0 to 150) and returns what it reads back as. */
+	setVolume: (percent: number) => typedError<number, string>(__TAURI_INVOKE("set_volume", { percent })),
 	/**  Reads what an unverified model answers to, as text to paste into an issue. */
 	probeUnverified: () => typedError<string, string>(__TAURI_INVOKE("probe_unverified")),
 	/**  Chooses whether to use the unverified model, and which writes to allow. */
@@ -186,6 +188,8 @@ export type ModelDto = {
 	verified: boolean,
 	/**  What lights up: any of `"logo"`, `"ring"`, `"notch"`. */
 	zones: string[],
+	/**  Whether the EQ has JBL's own headset correction for it. */
+	eqTuning: boolean,
 	/**  Empty for anything that isn't a headset. */
 	features: FeatureDto[],
 };
@@ -209,6 +213,7 @@ export type StateDto = {
 	headset: HeadsetDto,
 	eq: EqDto,
 	surround: SurroundDto,
+	volume: VolumeDto,
 	update: UpdateDto,
 	unverified: UnverifiedDto,
 	/**  The model being served, from QuantumEngine's catalogue, if it's listed. */
@@ -252,6 +257,14 @@ export type UpdateDto = {
 	busy: boolean,
 	/**  Whether the service checks GitHub once a day. */
 	checks: boolean,
+};
+
+/**  The headset output's volume, as the desktop's own slider shows it. */
+export type VolumeDto = {
+	/**  Whether a headset output was found to take the volume of. */
+	available: boolean,
+	/**  0 to 150. The part above 100 is a boost that can distort. */
+	percent: number,
 };
 
 /**

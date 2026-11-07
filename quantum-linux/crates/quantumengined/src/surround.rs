@@ -29,7 +29,8 @@
 //! [`Command`]s, as with the EQ.
 
 use crate::brir;
-use crate::eq::{self, pipewire::HEADSET_GAME_OUTPUT, profiles::Correction};
+use crate::eq::{self, profiles::Correction};
+use crate::output;
 use crate::notifier::Notifier;
 use crate::pwgraph::{self, quoted, Graph};
 use crate::settings;
@@ -274,8 +275,8 @@ impl Worker {
         if was_default {
             // WirePlumber would pick some output on its own once ours is
             // gone; the headset is the one that was swapped out for it.
-            if let Some((id, _)) = pwgraph::find_node(|p| HEADSET_GAME_OUTPUT.matches(p) && p["media.class"] == "Audio/Sink")? {
-                pwgraph::set_default(id)?;
+            if let Some(headset) = output::find()? {
+                pwgraph::set_default(headset.node_id)?;
             }
         }
         Ok(())
@@ -284,7 +285,7 @@ impl Worker {
 
 /// The node name of the headset's game output, if its dongle is plugged in.
 fn headset_sink() -> Result<Option<String>, String> {
-    Ok(pwgraph::find_node(|p| HEADSET_GAME_OUTPUT.matches(p) && p["media.class"] == "Audio/Sink")?.map(|(_, name)| name))
+    Ok(output::find()?.map(|o| o.node_name))
 }
 
 fn config(node_name: &str, target: &str, brir: &Path) -> String {
@@ -454,7 +455,8 @@ mod live_tests {
     #[ignore = "starts a real PipeWire filter in the current session"]
     fn graph_starts_with_eight_channels_and_goes_away() {
         let name = "quantumengine_surround_test";
-        let (_, target) = pwgraph::find_node(|p| p["media.class"] == "Audio/Sink" && !HEADSET_GAME_OUTPUT.matches(p))
+        let headset = output::find().unwrap().map(|o| o.node_name);
+        let (_, target) = pwgraph::find_node(|p| p["media.class"] == "Audio/Sink" && p["node.name"].as_str() != headset.as_deref())
             .unwrap()
             .expect("an audio output to play into");
         let azimuths: Vec<f64> = SPEAKERS.iter().map(|(_, az)| *az).collect();

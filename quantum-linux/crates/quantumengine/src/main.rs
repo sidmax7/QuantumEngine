@@ -40,6 +40,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::end_eq_preview,
             commands::import_eq_profile,
             commands::set_surround_enabled,
+            commands::set_volume,
             commands::probe_unverified,
             commands::set_unverified,
             commands::grant_unverified_access,

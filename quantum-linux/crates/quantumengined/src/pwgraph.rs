@@ -82,7 +82,7 @@ pub fn runtime_dir() -> PathBuf {
 }
 
 /// Every object in the PipeWire graph, as `pw-dump` prints them.
-fn dump() -> Result<Vec<serde_json::Value>, String> {
+pub fn dump() -> Result<Vec<serde_json::Value>, String> {
     let out = Command::new("pw-dump")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
