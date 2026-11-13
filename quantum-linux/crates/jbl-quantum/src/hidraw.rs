@@ -1,5 +1,6 @@
 //! Raw hidraw access: device discovery and the two ioctls this device needs.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -25,6 +26,51 @@ const fn hidioc_set_feature(len: usize) -> u64 {
 
 const fn hidioc_get_feature(len: usize) -> u64 {
     ioc(IOC_WRITE | IOC_READ, b'H', 0x07, len)
+}
+
+/// `HID_MAX_DESCRIPTOR_SIZE` in linux/hid.h.
+const MAX_DESCRIPTOR: usize = 4096;
+
+/// `struct hidraw_report_descriptor` in linux/hidraw.h.
+#[repr(C)]
+struct ReportDescriptor {
+    size: u32,
+    value: [u8; MAX_DESCRIPTOR],
+}
+
+const fn hidioc_get_rdesc_size() -> u64 {
+    ioc(IOC_READ, b'H', 0x01, std::mem::size_of::<libc::c_int>())
+}
+
+const fn hidioc_get_rdesc() -> u64 {
+    ioc(IOC_READ, b'H', 0x02, std::mem::size_of::<ReportDescriptor>())
+}
+
+/// The report IDs a HID report descriptor declares Feature items for.
+pub(crate) fn feature_ids(descriptor: &[u8]) -> BTreeSet<u8> {
+    let mut ids = BTreeSet::new();
+    let (mut id, mut pushed) = (0u8, Vec::new());
+    let mut i = 0;
+    while i < descriptor.len() {
+        let prefix = descriptor[i];
+        if prefix == 0xFE {
+            // A long item; its data size is in the next byte.
+            i += 3 + descriptor.get(i + 1).copied().unwrap_or(0) as usize;
+            continue;
+        }
+        let size = [0, 1, 2, 4][(prefix & 3) as usize];
+        let data = descriptor.get(i + 1..i + 1 + size).unwrap_or(&[]);
+        let value = data.iter().rev().fold(0u32, |v, &b| v << 8 | u32::from(b));
+        match prefix & 0xFC {
+            0x84 => id = value as u8,                // Report ID
+            0xA4 => pushed.push(id),                 // Push
+            0xB4 => id = pushed.pop().unwrap_or(id), // Pop
+            0xB0 => drop(ids.insert(id)),            // Feature
+            _ => {}
+        }
+        i += 1 + size;
+    }
+    ids
 }
 
 /// A hidraw node belonging to a matching device.
@@ -103,12 +149,34 @@ fn parse_field(uevent: &str, key: &str) -> Option<String> {
 #[derive(Debug)]
 pub struct Hidraw {
     fd: OwnedFd,
+    /// The feature reports the device's report descriptor declares, or
+    /// `None` when that couldn't be read, in which case nothing is refused.
+    features: Option<BTreeSet<u8>>,
 }
 
 impl Hidraw {
     pub fn open(path: &Path) -> io::Result<Self> {
         let file = fs::OpenOptions::new().read(true).write(true).open(path)?;
-        Ok(Self { fd: file.into() })
+        let fd: OwnedFd = file.into();
+        // A descriptor with no report IDs puts everything under ID 0, which
+        // this protocol never uses; don't gate on that.
+        let features = read_descriptor(&fd).ok().map(|d| feature_ids(&d)).filter(|ids| !ids.contains(&0));
+        Ok(Self { fd, features })
+    }
+
+    /// Refuses a report the device doesn't declare, before anything reaches
+    /// it. Asking a Quantum 400 for reports it doesn't have (the wireless
+    /// link, battery and host name) is one of the two things QuantumEngine
+    /// did that JBL's app and a plain script don't, while its lights stopped
+    /// following commands until a replug (issue #4).
+    fn declared(&self, report_id: u8) -> io::Result<()> {
+        match &self.features {
+            Some(ids) if !ids.contains(&report_id) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("report 0x{report_id:02X} isn't one this device has; its report descriptor doesn't list it"),
+            )),
+            _ => Ok(()),
+        }
     }
 
     /// `GET_REPORT(Feature)`. Returns the payload with the leading report-ID
@@ -139,6 +207,7 @@ impl Hidraw {
     /// Like [`Hidraw::get_feature`] but returns the ioctl result and the whole
     /// buffer, for diagnostics.
     pub fn get_feature_debug(&self, report_id: u8, len: usize) -> io::Result<(i32, Vec<u8>)> {
+        self.declared(report_id)?;
         let mut buf = vec![0u8; len + 1];
         buf[0] = report_id;
         let n = unsafe {
@@ -160,6 +229,9 @@ impl Hidraw {
     /// right call — the vendor software uses control-transfer SET_REPORT and so
     /// do we.
     pub fn set_feature(&self, payload: &[u8]) -> io::Result<()> {
+        if let Some(&report_id) = payload.first() {
+            self.declared(report_id)?;
+        }
         let mut buf = payload.to_vec();
         let n = unsafe {
             libc::ioctl(
@@ -211,6 +283,20 @@ impl Hidraw {
         buf.truncate(n as usize);
         Ok(buf)
     }
+}
+
+/// The device's HID report descriptor, as the kernel parsed it.
+fn read_descriptor(fd: &OwnedFd) -> io::Result<Vec<u8>> {
+    let mut size: libc::c_int = 0;
+    if unsafe { libc::ioctl(fd.as_raw_fd(), hidioc_get_rdesc_size(), &mut size) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let size = (size.max(0) as usize).min(MAX_DESCRIPTOR);
+    let mut desc = Box::new(ReportDescriptor { size: size as u32, value: [0; MAX_DESCRIPTOR] });
+    if unsafe { libc::ioctl(fd.as_raw_fd(), hidioc_get_rdesc(), &mut *desc) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(desc.value[..size].to_vec())
 }
 
 /// Bytes in and out of the device: the real hidraw ioctls implemented above,
@@ -269,5 +355,63 @@ mod tests {
         // Cross-checked against the values the working Python probe used.
         assert_eq!(hidioc_set_feature(2), 0xC002_4806);
         assert_eq!(hidioc_get_feature(2), 0xC002_4807);
+        // _IOR('H', 0x01, int) and _IOR('H', 0x02, struct hidraw_report_descriptor).
+        assert_eq!(hidioc_get_rdesc_size(), 0x8004_4801);
+        assert_eq!(hidioc_get_rdesc(), 0x9004_4802);
+    }
+
+    /// Every report the library reads or writes, by number.
+    fn used_reports() -> Vec<u8> {
+        use crate::protocol::feature::*;
+        vec![
+            ANC_MIRROR, ANC, BATTERY, LIGHTS_MIRROR, LIGHTS, LIGHT_CONFIG, LIGHT_COLOUR, FIRMWARE, SIDETONE_MIRROR,
+            SIDETONE, DEVICE_NAME, SERIAL, DIAL, MIC_ACTIVE, CONNECTION,
+        ]
+    }
+
+    #[test]
+    fn the_810_declares_every_report_the_library_uses() {
+        // Its descriptor, read from a real 810's dongle.
+        let ids = feature_ids(include_bytes!("testdata/quantum810.rdesc"));
+        for report in used_reports() {
+            assert!(ids.contains(&report), "0x{report:02X}");
+        }
+    }
+
+    #[test]
+    fn the_400_lacks_the_wireless_reports() {
+        // Its descriptor, as posted on issue #4.
+        let ids = feature_ids(include_bytes!("testdata/quantum400.rdesc"));
+        for missing in [0x49, 0x5B, 0x68] {
+            assert!(!ids.contains(&missing), "0x{missing:02X}");
+        }
+        for has in [0x4A, 0x4B, 0x4C, 0x4D, 0x51, 0x5C, 0x5D, 0x61, 0x62, 0x67] {
+            assert!(ids.contains(&has), "0x{has:02X}");
+        }
+    }
+
+    /// Run with `cargo test -- --ignored` with an 810 dongle plugged in. Only
+    /// opens the node: the kernel answers the descriptor from its own copy,
+    /// so nothing is sent to the dongle or the headset.
+    #[test]
+    #[ignore = "needs an 810 dongle plugged in"]
+    fn a_real_dongle_declares_every_report_the_library_uses() {
+        let node = discover(crate::VENDOR_ID, crate::PRODUCT_ID).unwrap().into_iter().next().expect("an 810 dongle");
+        let h = Hidraw::open(&node.path).unwrap();
+        let ids = h.features.as_ref().expect("the descriptor read");
+        for report in used_reports() {
+            assert!(ids.contains(&report), "0x{report:02X}");
+        }
+    }
+
+    #[test]
+    fn an_undeclared_report_never_reaches_the_device() {
+        let fd: OwnedFd = fs::File::open("/dev/null").unwrap().into();
+        let h = Hidraw { fd, features: Some(feature_ids(include_bytes!("testdata/quantum400.rdesc"))) };
+        // /dev/null would fail the ioctl itself; this error comes first.
+        let err = h.get_feature(0x68, 1).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(h.set_feature(&[0x5B, 0]).unwrap_err().kind(), io::ErrorKind::Unsupported);
+        assert_ne!(h.get_feature(0x4A, 1).unwrap_err().kind(), io::ErrorKind::Unsupported);
     }
 }

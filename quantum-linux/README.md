@@ -343,6 +343,15 @@ on Arch, runs the tests, and publishes a GitHub release with the package, its
 one for the AUR). Installed copies pick the release up within a day. Every
 push to `master` is also linted and tested by `.github/workflows/check.yml`.
 
+Both can also run on your own machine, for when GitHub Actions can't. They
+use podman (or docker) and the same clean `archlinux:base-devel` container:
+
+- `scripts/check-local.sh` runs the checks on a copy of the working tree.
+- `scripts/release-local.sh vX.Y.Z` builds the package from the pushed tag
+  and publishes the release with `gh`; add `--build-only` to stop before
+  publishing. Building in the container matters: a host `makepkg` on CachyOS
+  builds for that CPU only (`-march=native`), which crashes on older ones.
+
 ## Library
 
 The `jbl-quantum` crate in `crates/jbl-quantum` has everything the two tools

@@ -108,17 +108,21 @@ const LIGHTING_PACKET_GAP: Duration = Duration::from_millis(20);
 /// An animation cycle is ten segments; each key frame starts on one.
 const SEGMENTS: usize = 10;
 
-/// What one screen colour channel, scaled by `brightness` (0-100), drives
-/// the LED at. Colours are picked as sRGB, where a byte of 40 is about 2% of
-/// the light, but the headset takes each byte as LED power, where 40 is 16%:
-/// sent as they are, a red like `#ef2929` lights green and blue enough to
-/// look pink. So the channel is dimmed as it would be on screen, then
-/// decoded to linear light; 0 and 255 stay as they are. Dimming the power
-/// instead barely shows: half the power looks nearly as bright.
+/// What one colour channel is sent as: the byte itself, the way JBL's own
+/// presets send theirs (its orange for the Quantum 400 is 255, 127, 0), scaled
+/// by `brightness` (0-100). Every channel is scaled by the same amount, so a
+/// dimmed colour keeps its hue; the amount follows a gamma curve because half
+/// the power looks nearly as bright as all of it.
+///
+/// Colours used to be converted from screen values to LED power first. That
+/// crushed the weaker channel of any mixed colour (orange sent as red, a
+/// violet logo as blue) and is gone (issue #4).
 fn led_drive(channel: u8, brightness: u8) -> u8 {
-    let c = channel as f32 / 255.0 * brightness as f32 / 100.0;
-    let linear = if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
-    (linear * 255.0).round() as u8
+    if brightness >= 100 {
+        return channel;
+    }
+    let scale = (brightness as f32 / 100.0).powf(2.2);
+    (channel as f32 * scale).round() as u8
 }
 
 /// The animation byte for a speed. The headset reads it as a period, so a
@@ -209,7 +213,7 @@ pub struct ZoneLighting {
     /// How fast the animation runs, 0-100, higher being faster. JBL's
     /// software offers 25, 50, 75 and 100; anything below 25 runs as 25.
     pub speed: u8,
-    /// 1..=[`MAX_SLOTS`] colours, as sRGB on screen: they are converted to LED power when sent.
+    /// 1..=[`MAX_SLOTS`] colours, sent as their bytes.
     pub palette: Vec<Colour>,
     pub effect: Effect,
 }
@@ -892,7 +896,7 @@ mod tests {
         let p = lighting_packets(&z);
         assert_eq!(p[0], [0x4C, 0x01, 75, 5]);
         assert_eq!(p[1], [0x4D, 0x01, 0, 0xff, 0, 0, 5, 0]);
-        assert_eq!(p[5], [0x4D, 0x01, 4, 55, 128, 255, 5, 8]);
+        assert_eq!(p[5], [0x4D, 0x01, 4, 128, 188, 255, 5, 8]);
         // Start segments spread over the ten-segment cycle.
         let starts: Vec<u8> = p[1..].iter().map(|k| k[7]).collect();
         assert_eq!(starts, [0, 2, 4, 6, 8]);
@@ -911,13 +915,14 @@ mod tests {
             palette: vec![Colour::new(255, 188, 1)],
             effect: Effect::SOLID,
         };
-        // Half as bright to the eye is about a fifth of the power.
-        assert_eq!(lighting_packets(&z)[1][3..6], [55, 29, 0]);
+        // Half as bright to the eye is about a fifth of the power, and every
+        // channel gets the same share, so the hue stays.
+        assert_eq!(lighting_packets(&z)[1][3..6], [55, 41, 0]);
         let off = ZoneLighting { brightness: 0, ..z.clone() };
         assert_eq!(lighting_packets(&off)[1][3..6], [0, 0, 0]);
         // Animations go out undimmed, keeping their mix: violet stays violet.
         let breathing = ZoneLighting { brightness: 5, palette: vec![Colour::new(0x80, 0, 0xff)], effect: Effect::BREATHING, ..z };
-        assert_eq!(lighting_packets(&breathing)[1][3..6], [55, 0, 255]);
+        assert_eq!(lighting_packets(&breathing)[1][3..6], [128, 0, 255]);
     }
 
     #[test]
@@ -927,10 +932,11 @@ mod tests {
     }
 
     #[test]
-    fn screen_colours_become_led_power() {
-        // The washed-out reds: GTK's red barely lights green and blue.
-        assert_eq!([0xef, 0x29, 0x29].map(|c| led_drive(c, 100)), [220, 6, 6]);
-        assert_eq!((led_drive(0, 100), led_drive(255, 100)), (0, 255));
+    fn colours_are_sent_as_picked() {
+        // JBL's own orange for the Quantum 400 (issue #4). Converting it from
+        // screen values to LED power made it 255, 55, 0: red.
+        assert_eq!([255, 127, 0].map(|c| led_drive(c, 100)), [255, 127, 0]);
+        assert_eq!([0x80, 0, 0xff].map(|c| led_drive(c, 100)), [0x80, 0, 0xff]);
     }
 
     /// The simulator, noting which report each write went to.

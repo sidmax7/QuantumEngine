@@ -344,17 +344,18 @@ const QUANTUM_400: Features = Features {
     ),
     noise_control: Support::from(Status::Absent, "", "JBL's app has none for it"),
     sidetone: Support::from(Status::Reported, "", "issue #4"),
-    // Apply left the logo dark, or frozen on its first colour until a replug
-    // (issue #4). Since 0.5.0 it is sent only the frames, as a plain script
-    // does, and the lights are left alone while they are on.
+    // Colours only showed after a replug (issue #4). A plain script showing
+    // them live, but only after the script rather than QuantumEngine had last
+    // set them, points at something QuantumEngine did: 0.5.1 drops the colour
+    // conversion and stops asking for reports the 400 doesn't declare.
     lights: Support::from(
         Status::Untested,
-        "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since.",
+        "Up to 0.5.0, colours only showed after a replug, and mixed ones wrong (orange as red). 0.5.1 sends colours as picked and never asks for reports the 400 doesn't have; not tried since.",
         "",
     ),
     lighting: Support::from(
         Status::Untested,
-        "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since.",
+        "Up to 0.5.0, colours only showed after a replug, and mixed ones wrong (orange as red). 0.5.1 sends colours as picked and never asks for reports the 400 doesn't have; not tried since.",
         "",
     ),
     eq: Support::from(

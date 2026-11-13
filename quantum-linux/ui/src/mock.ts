@@ -101,8 +101,8 @@ const Q400: ModelDto = {
     reads: ["reported", "Mic, dial, lights, serial and firmware answer; being wired, it has no battery or wireless link.", "issue #4"],
     anc: ["absent", "", "JBL's app has none for it"],
     sidetone: ["reported", "", "issue #4"],
-    lights: ["untested", "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since."],
-    lighting: ["untested", "Reworked in 0.5.0 after Apply left the logo dark or frozen on its first colour; not tried since."],
+    lights: ["untested", "Up to 0.5.0, colours only showed after a replug, and mixed ones wrong (orange as red). 0.5.1 sends colours as picked and never asks for reports the 400 doesn't have; not tried since."],
+    lighting: ["untested", "Up to 0.5.0, colours only showed after a replug, and mixed ones wrong (orange as red). 0.5.1 sends colours as picked and never asks for reports the 400 doesn't have; not tried since."],
     eq: ["reported", "Worked once QuantumEngine was chosen as the output by hand. Since 0.5.0 it attaches on its own, with no 810 tuning; not tried since.", "issue #4"],
   }),
 };
